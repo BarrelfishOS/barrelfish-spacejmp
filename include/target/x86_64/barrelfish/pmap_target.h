@@ -32,4 +32,9 @@ errval_t pmap_x86_64_init(struct pmap *pmap, struct vspace *vspace,
                           struct slot_allocator *opt_slot_alloc);
 errval_t pmap_x86_64_current_init(bool);
 
+errval_t pmap_x86_64_region_init(struct pmap_x86 *pmap,
+                                 bool init_domain,
+                                 genvaddr_t base,
+                                 genvaddr_t size);
+
 #endif // TARGET_X86_64_BARRELFISH_PMAP_H

@@ -26,6 +26,14 @@ static inline errval_t pmap_init(struct pmap *pmap, struct vspace *vspace,
     return pmap_x86_64_init(pmap, vspace, vnode, opt_slot_alloc);
 }
 
+static inline errval_t pmap_region_init(struct pmap *pmap,
+                                        bool init_domain,
+                                        genvaddr_t base,
+                                        genvaddr_t size)
+{
+    return pmap_x86_64_region_init((struct pmap_x86 *)pmap, init_domain, base, size);
+}
+
 static inline errval_t pmap_current_init(bool init_domain)
 {
     return pmap_x86_64_current_init(init_domain);

@@ -1169,31 +1169,40 @@ errval_t pmap_x86_64_init(struct pmap *pmap, struct vspace *vspace,
  *
  * This code is coupled with #vspace_current_init()
  */
+errval_t pmap_x86_64_region_init(struct pmap_x86 *pmap,
+                                 bool init_domain,
+                                 genvaddr_t base,
+                                 genvaddr_t size)
+{
+    // To reserve a block of virtual address space,
+    // a vregion representing the address space is required.
+    // We construct a superficial one here and add it to the vregion list.
+    struct vregion *vregion = &pmap->vregion;
+    vregion->vspace = NULL;
+    vregion->memobj = NULL;
+    vregion->base   = base;
+    vregion->offset = 0;
+    vregion->size   = size;
+    vregion->flags  = 0;
+    vregion->next = NULL;
+
+    struct vspace *vspace = pmap->p.vspace;
+    assert(!vspace->head);
+    vspace->head = vregion;
+
+    pmap->vregion_offset = pmap->vregion.base;
+
+    // We don't know the vnode layout for the first part of our address space
+    // (which was setup by the kernel), so we avoid mapping there until told it.
+    pmap->min_mappable_va = base;
+
+    return SYS_ERR_OK;
+}
+
 errval_t pmap_x86_64_current_init(bool init_domain)
 {
     struct pmap_x86 *x86 = (struct pmap_x86*)get_current_pmap();
 
-    // To reserve a block of virtual address space,
-    // a vregion representing the address space is required.
-    // We construct a superficial one here and add it to the vregion list.
-    struct vregion *vregion = &x86->vregion;
-    vregion->vspace = NULL;
-    vregion->memobj = NULL;
-    vregion->base   = META_DATA_RESERVED_BASE;
-    vregion->offset = 0;
-    vregion->size   = META_DATA_RESERVED_SIZE;
-    vregion->flags  = 0;
-    vregion->next = NULL;
-
-    struct vspace *vspace = x86->p.vspace;
-    assert(!vspace->head);
-    vspace->head = vregion;
-
-    x86->vregion_offset = x86->vregion.base;
-
-    // We don't know the vnode layout for the first part of our address space
-    // (which was setup by the kernel), so we avoid mapping there until told it.
-    x86->min_mappable_va = META_DATA_RESERVED_BASE;
-
-    return SYS_ERR_OK;
+    return pmap_x86_64_region_init(x86, init_domain, META_DATA_RESERVED_BASE,
+                                   META_DATA_RESERVED_SIZE);
 }
