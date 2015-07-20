@@ -1,0 +1,70 @@
+--------------------------------------------------------------------------
+-- Copyright (c) 2015, ETH Zurich.
+-- All rights reserved.
+--
+-- This file is distributed under the terms in the attached LICENSE file.
+-- If you do not find this file, copies can be found by writing to:
+-- ETH Zurich D-INFK, Universitaetsstrasse 6, CH-8092 Zurich. Attn: Systems Group.
+--
+-- Hakefile for lib/vas
+-- 
+--------------------------------------------------------------------------
+
+[
+
+build library { 
+    target = "vas",
+    architectures = [ "x86_64" ],
+    cFiles = [ 
+        "vas.c",
+        "vas_vspace.c"
+    ],
+    addIncludes = [
+        "include"
+    ],
+    flounderDefs = [
+        "vas"
+    ],
+    flounderBindings = [
+        "vas"
+    ]
+},
+
+build application {
+    target = "vas_service",
+    architectures = [ "x86_64" ],
+    cFiles = [
+        "vas_service.c"
+    ],
+    addLibraries = libDeps [
+        "vas"
+    ],
+    flounderDefs = [
+        "vas"
+    ]
+},
+
+build application {
+    target = "tests/vas_test",
+    architectures = [ "x86_64" ],
+    cFiles = [
+        "vas_test.c"
+    ],
+    addLibraries = libDeps [
+        "vas"
+    ]
+},
+
+build application {
+    target = "benchmarks/vas_bench",
+    architectures = [ "x86_64" ],
+    cFiles = [
+        "vas_bench.c"
+    ],
+    addLibraries = libDeps [
+        "vas"
+    ]
+}
+
+]
+  

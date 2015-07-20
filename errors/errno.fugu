@@ -1150,3 +1150,13 @@ errors cpuid CPUID_ERR_ {
     failure UNKNOWN_VENDOR          "The CPU vendor is not supported",
     failure INVALID_INDEX           "There is no leaf with this index",
 };
+
+errors vas VAS_ERR_ {
+    failure CREATE_NAME_CONFLICT   "Name already in use",
+    failure NO_PERMISSION          "Insufficient permissions to perform requested action",
+    failure NOT_FOUND              "Cannot find requested address space.",
+    failure DETACH_SWITCH          "Must switch out before detaching",
+    failure SWITCH_NOT_ATTACHED    "Can't switch to unattached file",
+    failure NOT_SUPPORTED          "Currently unsupported functionality",
+    failure OUT_OF_HANDLES         "Not enough handles",
+};
