@@ -16,6 +16,16 @@
 #include <vas_internal.h>
 #include <vas_vspace.h>
 
+/**
+ * \brief enables the support for multiple virtual address spaces on this dispatcher
+ *
+ * \returns SYS_ERR_OK on success
+ *          errval on failure
+ */
+errval_t vas_enable(void)
+{
+    return SYS_ERR_OK;
+}
 
 /**
  * \brief creates a new virtual address space (VAS)
@@ -36,6 +46,10 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
 {
     errval_t err;
 
+    VAS_DEBUG_LIBVAS("creating vas '%s'\n", name);
+
+    assert(ret_vas);
+
     struct vas *vas = calloc(1, sizeof(struct vas));
     if (vas == NULL) {
         return LIB_ERR_MALLOC_FAIL;
@@ -49,7 +63,11 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
         return err;
     }
 
-    /* */
+    strncpy(vas->name, name, VAS_ID_MAX_LEN);
+
+    vas->state = VAS_STATE_DETACHED;
+
+    *ret_vas = vas;
 
     return SYS_ERR_OK;
 }
@@ -109,7 +127,33 @@ errval_t vas_lookup_by_id(vas_id_t id, vas_handle_t *ret_vas)
  */
 errval_t vas_attach(vas_handle_t vas, vas_perm_t perm)
 {
-    return VAS_ERR_NOT_SUPPORTED;
+    errval_t err;
+
+    VAS_DEBUG_LIBVAS("attaching vas '%s'\n", vas->name);
+
+    /* if the state is already attached don't do anything*/
+    if (vas->state == VAS_STATE_ATTACHED) {
+        return SYS_ERR_OK;
+    }
+
+    /* state change is undergoing / vas is not valid this is an error*/
+    if (vas->state != VAS_STATE_DETACHED) {
+        return VAS_ERR_ATTACH_STATE;
+    }
+
+    err = vas_vspace_inherit_segments(vas);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    err = vas_vspace_inherit_heap(vas);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    vas->state = VAS_STATE_ATTACHED;
+
+    return SYS_ERR_OK;
 }
 
 /**
@@ -134,7 +178,24 @@ errval_t vas_detach(vas_handle_t vas)
  */
 errval_t vas_switch(vas_handle_t vas)
 {
-    return VAS_ERR_NOT_SUPPORTED;
+    VAS_DEBUG_LIBVAS("switching to vas '%s'\n", vas->name);
+
+    errval_t err;
+
+    if (vas->state != VAS_STATE_ATTACHED) {
+        return VAS_ERR_SWITCH_NOT_ATTACHED;
+    }
+
+    err =  vnode_vroot_switch(vas->vtree);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+   // vas->state = VAS_STATE_ACTIVE;
+
+    VAS_DEBUG_LIBVAS("switched to vas '%s'\n", vas->name);
+
+    return SYS_ERR_OK;
 }
 
 
@@ -160,3 +221,7 @@ errval_t vas_set_perm(vas_id_t id, vas_perm_t perm) {return VAS_ERR_NOT_SUPPORTE
 errval_t vas_get_life(vas_id_t id, vas_life_t* life) {return VAS_ERR_NOT_SUPPORTED;}
 errval_t vas_set_life(vas_id_t id, vas_life_t lifetime) {return VAS_ERR_NOT_SUPPORTED;}
 
+vas_state_t vas_get_state(struct vas *vas)
+{
+    return vas->state;
+}

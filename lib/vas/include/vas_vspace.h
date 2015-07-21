@@ -33,6 +33,8 @@
 errval_t vas_vspace_init(struct vas *vas);
 errval_t vas_vspace_create_vroot(struct capref vroot);
 
+errval_t vas_vspace_inherit_segments(struct vas *vas);
+errval_t vas_vspace_inherit_heap(struct vas *vas);
 
 
 #endif /* __VAS_VSPACE_H_ */

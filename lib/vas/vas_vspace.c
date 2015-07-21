@@ -116,3 +116,98 @@ errval_t vas_vspace_init(struct vas *vas)
 }
 
 
+/**
+ * \brief inherits the text and data segment regions from the domain
+ *
+ * \param vas   the VAS to set the segments
+ *
+ * \returns SYS_ERR_OK on success
+ *          errval or error
+ */
+errval_t vas_vspace_inherit_segments(struct vas *vas)
+{
+    struct capref vroot = {
+        .cnode = cnode_page,
+        .slot = 0
+    };
+
+    return vnode_inherit(vas->vtree, vroot, 0, 1);
+}
+
+/**
+ * \brief inherits the heap segment regions from the domain
+ *
+ * \param vas   the VAS to set the segments
+ *
+ * \returns SYS_ERR_OK on success
+ *          errval or error
+ */
+errval_t vas_vspace_inherit_heap(struct vas *vas)
+{
+    struct capref vroot = {
+        .cnode = cnode_page,
+        .slot = 0
+    };
+
+    return vnode_inherit(vas->vtree, vroot, 1, 32);
+}
+
+errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
+                                  struct capref frame, size_t size)
+{
+    VAS_DEBUG_VSPACE("mapping new frame in vas %s\n", vas->name);
+
+    errval_t err;
+    struct vregion *vregion = NULL;
+    struct memobj_one_frame *memobj = NULL;
+
+    vregion = malloc(sizeof(struct vregion));
+    if (!vregion) {
+        err = LIB_ERR_MALLOC_FAIL;
+        goto error;
+    }
+    memobj = malloc(sizeof(struct memobj_one_frame));
+    if (!memobj) {
+        err = LIB_ERR_MALLOC_FAIL;
+        goto error;
+    }
+
+    err = memobj_create_one_frame(memobj, size, 0);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_MEMOBJ_CREATE_ANON);
+        goto error;
+    }
+    err = memobj->m.f.fill(&memobj->m, 0, frame, size);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_MEMOBJ_FILL);
+        goto error;
+    }
+    err = vregion_map(vregion, &vas->vspace_state.vspace, &memobj->m, 0, size,
+                      VREGION_FLAGS_READ_WRITE);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_VSPACE_MAP);
+        goto error;
+    }
+    err = memobj->m.f.pagefault(&memobj->m, vregion, 0, 0);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_MEMOBJ_PAGEFAULT_HANDLER);
+        goto error;
+    }
+
+    *retaddr = (void *)vregion_get_base_addr(vregion);
+
+    VAS_DEBUG_VSPACE("mapped frame in vas %s @ %016lx\n", vas->name,
+                     vregion_get_base_addr(vregion));
+
+    return SYS_ERR_OK;
+
+    error: // XXX: proper cleanup
+    if (vregion) {
+        free(vregion);
+    }
+    if (memobj) {
+        free(memobj);
+    }
+    return err;
+}
+
