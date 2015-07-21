@@ -286,8 +286,6 @@ static struct sysret handle_inherit(struct capability *dest,
     uint64_t *src_entry = (uint64_t *)local_phys_to_mem(src_addr);
 
     for (uint64_t i = start; i < end; ++i) {
-        printf("kernel: cpy: %p -> %p\n", src_entry+i, dst_entry+i);
-        printf("kernel: cpy: [%016lx] -> [%016lx]\n", src_entry[i], dst_entry[i]);
         dst_entry[i] = src_entry[i];
     }
 
@@ -312,8 +310,6 @@ static struct sysret handle_vroot_switch(struct capability *dest,
     }
 
     paging_context_switch(dcb_current->vspace);
-
-    printf("kernel: switched to vroot: [%016lx]\n", dcb_current->vspace);
 
     return SYSRET(SYS_ERR_OK);
 }
