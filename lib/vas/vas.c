@@ -186,7 +186,11 @@ errval_t vas_switch(vas_handle_t vas)
         return VAS_ERR_SWITCH_NOT_ATTACHED;
     }
 
-    err =  vnode_vroot_switch(vas->vtree);
+    if (vas) {
+        err =  vnode_vroot_switch(vas->vtree);
+    } else {
+        err = vnode_vroot_switch(NULL_CAP);
+    }
     if (err_is_fail(err)) {
         return err;
     }
