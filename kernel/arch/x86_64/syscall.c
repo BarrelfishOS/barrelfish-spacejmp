@@ -300,15 +300,16 @@ static struct sysret handle_inherit(struct capability *dest,
 static struct sysret handle_vroot_switch(struct capability *dest,
                                     int cmd, uintptr_t *args)
 {
-    if (dest->type != ObjType_VNode_x86_64_pml4) {
-        return SYSRET(SYS_ERR_CNODE_TYPE);
+    switch(dest->type) {
+        case ObjType_Null :
+            dcb_current->vspace = dcb_current->vspace0;
+            break;
+        case ObjType_VNode_x86_64_pml4 :
+            dcb_current->vspace = dest->u.vnode_x86_64_pml4.base;
+            break;
+        default:
+            return SYSRET(SYS_ERR_CNODE_TYPE);
     }
-
-    printf("kernel: about to switch vroot: [%016lx] -> [%016lx]\n", dcb_current->vspace,
-           dest->u.vnode_x86_64_pml4.base);
-    dcb_current->vspace = dest->u.vnode_x86_64_pml4.base;
-
-
 
     paging_context_switch(dcb_current->vspace);
 
