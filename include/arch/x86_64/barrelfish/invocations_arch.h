@@ -479,5 +479,9 @@ static inline errval_t invoke_vnode_inherit(struct capref dest, capaddr_t src, i
     return cap_invoke5(dest, VNodeCmd_Inherit, src, frombits, start, end).error;
 }
 
+static inline errval_t invoke_vnode_vroot_switch(struct capref dest)
+{
+    return cap_invoke1(dest, VNodeCmd_Switch).error;
+}
 
 #endif

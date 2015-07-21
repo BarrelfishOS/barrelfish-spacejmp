@@ -105,6 +105,8 @@ sys_dispatcher_setup(struct capability *to, capaddr_t cptr, int depth,
         }
     }
 
+    dcb->vspace0 = dcb->vspace;
+
     /* 3. set dispatcher frame pointer */
     if (dptr != CPTR_NULL) {
         struct cte *dispcte;

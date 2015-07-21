@@ -294,6 +294,29 @@ static struct sysret handle_inherit(struct capability *dest,
     return SYSRET(SYS_ERR_OK);
 }
 
+/*
+ *  MVAS Extension
+ */
+static struct sysret handle_vroot_switch(struct capability *dest,
+                                    int cmd, uintptr_t *args)
+{
+    if (dest->type != ObjType_VNode_x86_64_pml4) {
+        return SYSRET(SYS_ERR_CNODE_TYPE);
+    }
+
+    printf("kernel: about to switch vroot: [%016lx] -> [%016lx]\n", dcb_current->vspace,
+           dest->u.vnode_x86_64_pml4.base);
+    dcb_current->vspace = dest->u.vnode_x86_64_pml4.base;
+
+
+
+    paging_context_switch(dcb_current->vspace);
+
+    printf("kernel: switched to vroot: [%016lx]\n", dcb_current->vspace);
+
+    return SYSRET(SYS_ERR_OK);
+}
+
 /// Different handler for cap operations performed by the monitor
 static struct sysret monitor_handle_retype(struct capability *kernel_cap,
                                            int cmd, uintptr_t *args)
@@ -1022,6 +1045,7 @@ static invocation_handler_t invocations[ObjType_Num][CAP_MAX_CMD] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
         [VNodeCmd_Inherit] = handle_inherit,
+        [VNodeCmd_Switch] = handle_vroot_switch,
     },
     [ObjType_VNode_x86_64_pdpt] = {
         [VNodeCmd_Map]   = handle_map,

@@ -41,6 +41,8 @@ struct dcb {
     bool                disabled;       ///< Was dispatcher disabled when last saved?
     struct cte          cspace;         ///< Cap slot for CSpace
     lpaddr_t            vspace;         ///< Address of VSpace root
+    lpaddr_t            vspace0;        ///< Address vo VSPace0 root.
+
     struct cte          disp_cte;
     unsigned int        faults_taken;   ///< # of disabled faults or traps taken
     /// Indicates whether this domain shall be executed in VM guest mode

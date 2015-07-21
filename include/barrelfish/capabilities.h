@@ -151,6 +151,14 @@ static inline errval_t vnode_inherit(struct capref dest, struct capref src,
     return invoke_vnode_inherit(dest, saddr, svbits, start, end);
 }
 
+/*
+ * MVAS extension
+ */
+static inline errval_t vnode_vroot_switch(struct capref vroot)
+{
+    return invoke_vnode_vroot_switch(vroot);
+}
+
 __END_DECLS
 
 #endif //INCLUDEBARRELFISH_CAPABILITIES_H

@@ -30,8 +30,12 @@ typedef uint64_t vas_seg_id_t;
 
 typedef enum vas_state {
     VAS_STATE_INVALID = 0,
-    VAS_STATE_DETACHED = 1,
-    VAS_STATE_ATTACHED = 2
+    VAS_STATE_DESTROYED = 1,
+    VAS_STATE_DESTROYING = 2,
+    VAS_STATE_DETACHED = 3,
+    VAS_STATE_DETACHING = 4,
+    VAS_STATE_ATTACHED = 5,
+    VAS_STATE_ACTIVE = 6
 } vas_state_t;
 
 ///< identifier for a currently attached VAS inside a process
@@ -80,7 +84,7 @@ struct vas_seg_info
  * Public interface
  * ==============================================================================
  */
-
+errval_t vas_enable(void);
 errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas);
 errval_t vas_delete(vas_handle_t id);
 
@@ -112,7 +116,7 @@ errval_t vas_tagging_tag(vas_id_t id);
 /*
  *
  */
-errval_t vas_vspace_map_one_frame(struct vas *vas, void *retaddr,
+errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
                                   struct capref frame, size_t size);
 errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
                                         struct capref frame, size_t size);
