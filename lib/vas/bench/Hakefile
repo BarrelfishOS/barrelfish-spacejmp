@@ -22,7 +22,8 @@
             architectures = [ arch ],
             cFiles = c_srcs ++ arch_srcs (archFamily arch),
             addLibraries = libDeps [
-                "vas"
+                "vas",
+                "bench"
             ]
         }
 
