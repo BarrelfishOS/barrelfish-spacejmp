@@ -26,7 +26,13 @@
 #define VAS_VSPACE_MAX_MAPPABLE (PML4_MAPPING_SIZE * (VAS_PML4_SLOT_MAX - 1))
 
 
+/*
+ *
+ */
 
 errval_t vas_vspace_init(struct vas *vas);
+errval_t vas_vspace_create_vroot(struct capref vroot);
+
+
 
 #endif /* __VAS_VSPACE_H_ */

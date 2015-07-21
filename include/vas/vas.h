@@ -109,6 +109,16 @@ errval_t vas_tagging_enable(void);
 errval_t vas_tagging_disable(void);
 errval_t vas_tagging_tag(vas_id_t id);
 
+/*
+ *
+ */
+errval_t vas_vspace_map_one_frame(struct vas *vas, void *retaddr,
+                                  struct capref frame, size_t size);
+errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
+                                        struct capref frame, size_t size);
+
+errval_t vas_vspace_unmap(void *addr);
+
 
 #if 0
 

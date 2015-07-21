@@ -36,14 +36,7 @@ errval_t vas_vspace_init(struct vas *vas)
 
 
     struct vspace *vspace = &vas->vspace_state.vspace;
-
-    vspace->head = NULL;
-
-    VAS_DEBUG_VSPACE("initializing vspace layout\n");
-    err = vspace_layout_init(&vspace->layout);
-    if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_VSPACE_LAYOUT_INIT);
-    }
+    struct pmap *pmap = (struct pmap *)&vas->vspace_state.pmap;
 
     /* create a new page cn */
     VAS_DEBUG_VSPACE("creating new pagecn cap\n");
@@ -52,31 +45,74 @@ errval_t vas_vspace_init(struct vas *vas)
         return err_push(err, SPAWN_ERR_CREATE_PAGECN);
     }
 
+    /* create a new vroot */
+
+    VAS_DEBUG_VSPACE("initializing slot allocator \n");
+    size_t bufsize = SINGLE_SLOT_ALLOC_BUFLEN(PAGE_CNODE_SLOTS);
+    void *buf = calloc(1, bufsize);
+    if (buf == NULL) {
+        err =  LIB_ERR_MALLOC_FAIL;
+        goto out_err;
+    }
+
+    err = single_slot_alloc_init_raw(&vas->pagecn_slot_alloc, vas->pagecn_cap,
+                                     vas->pagecn, PAGE_CNODE_SLOTS, buf, bufsize);
+    if (err_is_fail(err)) {
+        err =  err_push(err, LIB_ERR_SINGLE_SLOT_ALLOC_INIT_RAW);
+        goto out_err;
+    }
+
+    VAS_DEBUG_VSPACE("creating the root page table\n");
+
+    // Create root of pagetable
+    err = vas->pagecn_slot_alloc.a.alloc(&vas->pagecn_slot_alloc.a, &vas->vtree);
+    if (err_is_fail(err)) {
+        err =  err_push(err, LIB_ERR_SLOT_ALLOC);
+        goto out_err;
+    }
+
+    assert(vas->vtree.slot == 0);
+    err = vas_vspace_create_vroot(vas->vtree);
+    if (err_is_fail(err)) {
+        goto out_err;
+    }
     VAS_DEBUG_VSPACE("initializing pmap\n");
 
-    /* initialize the pmap */
-    struct capref cap = {
-        .cnode = vas->pagecn,
-        .slot  = 0,
-    };
-
-    /* XXX: Maybe use a optional slot allocator? */
-    err = pmap_init((struct pmap *)&vas->vspace_state.pmap, vspace, cap, NULL);
+    err = pmap_init(pmap, vspace, vas->vtree, &vas->pagecn_slot_alloc.a);
     if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_PMAP_INIT);
+        err =  err_push(err, LIB_ERR_PMAP_INIT);
+        goto out_err;
+    }
+
+    VAS_DEBUG_VSPACE("initializing vspace\n");
+    err = vspace_init(vspace, pmap);
+    if (err_is_fail(err)) {
+        err =  err_push(err, LIB_ERR_VSPACE_LAYOUT_INIT);
+        goto out_err;
     }
 
     VAS_DEBUG_VSPACE("setting reserved memory region for pmap\n");
 
-    err = pmap_region_init((struct pmap *)&vas->vspace_state.pmap, 0,
-                           VAS_VSPACE_MIN_MAPPABLE, VAS_VSPACE_META_RESERVED_SIZE);
+    err = pmap_region_init(pmap, 0, VAS_VSPACE_MIN_MAPPABLE,
+                           VAS_VSPACE_META_RESERVED_SIZE);
     if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_PMAP_CURRENT_INIT);
+        err =  err_push(err, LIB_ERR_PMAP_CURRENT_INIT);
+        goto out_err;
     }
+
+    /*
+     * XXX:
+     *  - maybe reserve a region of memory for the vregion/memobjs
+     *  - create CNODE for the backing frames?
+     */
 
     VAS_DEBUG_VSPACE("vspace initialized successfully\n");
 
     return SYS_ERR_OK;
+
+    out_err :
+    cap_destroy(vas->pagecn_cap);
+    return err;
 }
 
 

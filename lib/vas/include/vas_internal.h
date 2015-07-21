@@ -22,7 +22,9 @@ struct vas
     char name[VAS_ID_MAX_LEN];          ///< name of the vas
     struct vspace_state vspace_state;   ///< vspace state
     struct capref pagecn_cap;           ///< cap of the page cn
-    struct cnoderef pagecn;             ///< pml4
+    struct cnoderef pagecn;             ///< pagecn cap
+    struct capref   vtree;              ///< vroot
+    struct single_slot_allocator pagecn_slot_alloc;
 };
 
 
