@@ -182,14 +182,17 @@ errval_t vas_switch(vas_handle_t vas)
 
     errval_t err;
 
-    if (vas->state != VAS_STATE_ATTACHED) {
-        return VAS_ERR_SWITCH_NOT_ATTACHED;
-    }
-
     if (vas) {
+        if (vas->state != VAS_STATE_ATTACHED) {
+            return VAS_ERR_SWITCH_NOT_ATTACHED;
+        }
         err =  vnode_vroot_switch(vas->vtree);
     } else {
-        err = vnode_vroot_switch(NULL_CAP);
+        struct capref vroot = {
+            .cnode = cnode_page,
+            .slot = 0
+        };
+        err = vnode_vroot_switch(vroot);
     }
     if (err_is_fail(err)) {
         return err;
