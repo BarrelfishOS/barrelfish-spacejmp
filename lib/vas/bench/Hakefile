@@ -11,27 +11,20 @@
 --------------------------------------------------------------------------
 
 [( let
-    c_srcs = [ "vas.c", "vas_vspace.c" ]
+    c_srcs = [ "vas_bench.c" ]
     
-    arch_srcs "x86_64" = [ "arch/x86_64/vas_vspace_arch.c" ]
-    arch_srcs _        = []
+    arch_srcs "x86_64" = [ ]
+    arch_srcs _        = [ ]
     
     in
-        build library { 
-            target = "vas",
+        build application {
+            target = "benchmarks/vas_bench",
             architectures = [ arch ],
             cFiles = c_srcs ++ arch_srcs (archFamily arch),
-            addIncludes = [
-                "include", 
-                "include/arch" ./. archFamily arch
-            ],
-            flounderDefs = [
-                "vas"
-            ],
-            flounderBindings = [
+            addLibraries = libDeps [
                 "vas"
             ]
         }
 
  ) | arch <- [ "x86_64" ]
-]
+] 
