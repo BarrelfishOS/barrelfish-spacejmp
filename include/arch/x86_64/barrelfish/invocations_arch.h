@@ -460,7 +460,7 @@ static inline errval_t invoke_send_start_ipi(struct capref ipi_cap, coreid_t cor
 }
 
 static inline errval_t invoke_get_global_paddr(struct capref kernel_cap, genpaddr_t* global)
-{ 
+{
     struct sysret sr = cap_invoke1(kernel_cap, KernelCmd_GetGlobalPhys);
     if (err_is_ok(sr.error)) {
         *global = sr.value;
@@ -468,5 +468,16 @@ static inline errval_t invoke_get_global_paddr(struct capref kernel_cap, genpadd
 
     return sr.error;
 }
+
+/*
+ * MVA extensions
+ */
+
+static inline errval_t invoke_vnode_inherit(struct capref dest, capaddr_t src, int frombits,
+                                            cslot_t start, cslot_t end)
+{
+    return cap_invoke5(dest, VNodeCmd_Inherit, src, frombits, start, end).error;
+}
+
 
 #endif

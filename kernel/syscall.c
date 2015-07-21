@@ -630,3 +630,4 @@ struct sysret sys_get_absolute_time(void)
         .value = kernel_now + kcb_current->kernel_off,
     };
 }
+
