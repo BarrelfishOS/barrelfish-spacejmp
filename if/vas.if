@@ -8,5 +8,24 @@
  */
 
 interface vas "VAS interface" {
-	message unused(); // Make compiler work
+	
+	/**
+     */
+	rpc share(in uint8 name[size],
+	          in cap pagecn,
+	          out errval msgerr,
+	          out uint64 id);
+	          
+	/**
+     *
+     */
+	rpc lookup(in uint8 name[size], 
+	           out errval msgerr,
+	           out cap pagecn,
+	           out uint64 id,
+	           out uint16 slot);
+	
+	rpc slot_alloc(in uint64 id,
+	               out errval msgerr,
+	               out uint16 slot);
 };

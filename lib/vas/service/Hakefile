@@ -17,7 +17,7 @@
     
     in
         build application {
-            target = "benchmarks/vas_service",
+            target = "vas_service",
             architectures = [ arch ],
             cFiles = c_srcs ++ arch_srcs (archFamily arch),
             addLibraries = libDeps [

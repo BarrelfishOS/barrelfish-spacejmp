@@ -23,7 +23,7 @@ struct vas;
 typedef struct vas * vas_handle_t;
 
 ///< virtual address space identifier
-typedef uint32_t vas_id_t;
+typedef uint64_t vas_id_t;
 
 ///< segment identifier
 typedef uint64_t vas_seg_id_t;
