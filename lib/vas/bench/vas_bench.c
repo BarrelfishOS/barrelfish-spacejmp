@@ -68,6 +68,8 @@ static uint64_t micro_benchmarks(void) {
     vas_handle_t vas[ITERATIONS];
     errval_t r;
 
+    vas_enable();
+
     static cycles_t overhead = 0;
     //// Loop overhead:
     {
