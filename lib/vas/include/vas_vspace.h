@@ -33,14 +33,62 @@
 errval_t vas_vspace_init(struct vas *vas);
 errval_t vas_vspace_create_vroot(struct capref vroot);
 
-errval_t vas_vspace_inherit_segments(struct vas *vas);
-errval_t vas_vspace_inherit_heap(struct vas *vas);
-errval_t vas_vspace_inherit_regions(struct vas *vas, struct capref vroot);
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
                                   struct capref frame, size_t size);
 errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
                                         struct capref frame, size_t size);
 errval_t vas_vspace_unmap(void *addr);
+
+/**
+ * \brief inherits the text and data segment regions from the domain
+ *
+ * \param vas   the VAS to set the segments
+ *
+ * \returns SYS_ERR_OK on success
+ *          errval or error
+ */
+static inline errval_t vas_vspace_inherit_segments(struct vas *vas)
+{
+    struct capref vroot = {
+        .cnode = cnode_page,
+        .slot = 0
+    };
+
+    return vnode_inherit(vas->vroot, vroot, 0, 1);
+}
+
+/**
+ * \brief inherits the heap segment regions from the domain
+ *
+ * \param vas   the VAS to set the segments
+ *
+ * \returns SYS_ERR_OK on success
+ *          errval or error
+ */
+static inline errval_t vas_vspace_inherit_heap(struct vas *vas)
+{
+    struct capref vroot = {
+        .cnode = cnode_page,
+        .slot = 0
+    };
+
+    return vnode_inherit(vas->vroot, vroot, 1, 32);
+}
+
+/**
+ * \brief inherits the vas segment regions from the VAS
+ *
+ * \param vas   the VAS to set the segments
+ * \param vroot
+ *
+ * \returns SYS_ERR_OK on success
+ *          errval or error
+ */
+static inline errval_t vas_vspace_inherit_regions(struct vas *vas, struct capref vroot,
+                                                  uint32_t start, uint32_t end)
+{
+    return vnode_inherit(vroot, vas->vroot, start, end);
+}
 
 #endif /* __VAS_VSPACE_H_ */
