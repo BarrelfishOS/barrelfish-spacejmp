@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include <barrelfish/barrelfish.h>
+#include <barrelfish/monitor_client.h>
 
 #include <vas_internal.h>
 #include <vas_vspace.h>
@@ -98,6 +99,7 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
     /* TODO: register name with the vas service to get the VAS ID */
 
     vas->state = VAS_STATE_DETACHED;
+    vas->tag = (vas->id + 2);
 
     *ret_vas = vas;
 
@@ -253,13 +255,13 @@ errval_t vas_switch(vas_handle_t vas)
         if (vas->state != VAS_STATE_ATTACHED) {
             return VAS_ERR_SWITCH_NOT_ATTACHED;
         }
-        err =  vnode_vroot_switch(vas->vroot);
+        err = vnode_vroot_switch(vas->vroot, vas->tag);
     } else {
         struct capref vroot = {
             .cnode = cnode_page,
             .slot = 0
         };
-        err = vnode_vroot_switch(vroot);
+        err = vnode_vroot_switch(vroot, 0);
     }
     if (err_is_fail(err)) {
         return err;
@@ -314,3 +316,20 @@ errval_t vas_unmap(vas_handle_t vas, void *addr)
 {
     return VAS_ERR_NOT_SUPPORTED;
 }
+
+errval_t vas_tagging_enable(void)
+{
+    return monitor_tlb_tag_toggle(1);
+}
+
+errval_t vas_tagging_disable(void)
+{
+    return monitor_tlb_tag_toggle(0);
+}
+
+errval_t vas_tagging_tag(vas_id_t id)
+{
+    return VAS_ERR_NOT_SUPPORTED;
+}
+
+

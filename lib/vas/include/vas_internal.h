@@ -21,6 +21,7 @@
 struct vas
 {
     vas_id_t id;                        ///< the vas id
+    uint16_t tag;                       ///< tag for the vas
     vas_state_t state;                  ///< the state of the vas
     vas_perm_t perms;                   ///< associated permissions
     char name[VAS_ID_MAX_LEN];          ///< name of the vas

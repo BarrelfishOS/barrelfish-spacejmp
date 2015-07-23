@@ -43,6 +43,8 @@ int main(int argc, char *argv[])
 {
     errval_t err;
 
+    vas_tagging_enable();
+
     debug_printf("## VAS TEST STARTED\n");
 
     oct_init();
