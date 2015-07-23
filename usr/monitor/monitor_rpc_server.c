@@ -565,10 +565,28 @@ static void irq_handle_call(struct monitor_blocking_binding *b, struct capref ep
     /* set it and reply */
     err = invoke_irqtable_set(cap_irq, vec, ep);
     if (err_is_fail(err)) {
-        err = err_push(err, MON_ERR_INVOKE_IRQ_SET);        
+        err = err_push(err, MON_ERR_INVOKE_IRQ_SET);
     }
     err2 = b->tx_vtbl.irq_handle_response(b, NOP_CONT, err, vec);
     assert(err_is_ok(err2));
+}
+
+static uint8_t tlb_tags_enabled = 0;
+
+static void tlb_tag_toggle_handle_call(struct monitor_blocking_binding *b,
+                                       uint8_t enable)
+{
+    errval_t err = SYS_ERR_OK;
+    debug_printf("tlb_tag_toggle_handle_call\n");
+    if (enable != tlb_tags_enabled) {
+        err = invoke_toggle_tlb_tags(cap_kernel, enable);
+        if (err_is_ok(err)) {
+            tlb_tags_enabled = enable;
+        }
+    }
+
+    err = b->tx_vtbl.toggle_tlb_tags_response(b, NOP_CONT, err);
+    assert(err_is_ok(err));
 }
 
 static void get_arch_core_id(struct monitor_blocking_binding *b)
@@ -863,6 +881,7 @@ static struct monitor_blocking_rx_vtbl rx_vtbl = {
     .forward_kcb_rm_request_call = forward_kcb_rm_request,
 
     .get_global_paddr_call = get_global_paddr,
+    .toggle_tlb_tags_call = tlb_tag_toggle_handle_call,
 };
 
 static void export_callback(void *st, errval_t err, iref_t iref)

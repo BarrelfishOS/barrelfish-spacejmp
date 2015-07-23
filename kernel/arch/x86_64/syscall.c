@@ -45,6 +45,8 @@
 
 extern uint64_t user_stack_save;
 
+static int tlb_tags_enabled = 0;
+
 /* FIXME: lots of missing argument checks in this function */
 static struct sysret handle_dispatcher_setup(struct capability *to,
                                              int cmd, uintptr_t *args)
@@ -307,6 +309,27 @@ static struct sysret handle_vroot_switch(struct capability *dest,
             break;
         default:
             return SYSRET(SYS_ERR_CNODE_TYPE);
+    }
+
+/*
+    MOV to CR3. The behavior of the instruction depends on the value of CR4.PCIDE:
+    - If CR4.PCIDE = 0, the instruction invalidates all TLB entries associated with
+    PCID 000H except those for global pages. It also invalidates all entries in all
+    paging-structure caches associated with PCID 000H.
+    - If CR4.PCIDE = 1 and bit 63 of the instructions source operand is 0, the
+    instruction invalidates all TLB entries associated with the PCID specified in
+    bits 11:0 of the instruction's source operand except those for global pages. It
+    also invalidates all entries in all paging-structure caches associated with that
+    PCID. It is not required to invalidate entries in the TLBs and paging-structure
+    caches that are associated with other PCIDs.
+    - If CR4.PCIDE = 1 and bit 63 of the instruction's source operand is 1, the
+    instruction is not required to invalidate any TLB entries or entries in pagingstructure
+    caches.
+  */
+    if (tlb_tags_enabled) {
+        if (args[0]) {
+            dcb_current->vspace |= ((args[0] & 0xfffUL) | (1UL << 63));
+        }
     }
 
     paging_context_switch(dcb_current->vspace);
@@ -998,6 +1021,60 @@ static struct sysret kernel_suspend_kcb_sched(struct capability *kern_cap,
     return sys_kernel_suspend_kcb_sched((bool)args[0]);
 }
 
+static lpaddr_t inline kernel_read_cr4(void)
+{
+    uint64_t cr4;
+    __asm__ __volatile__("mov %%cr4,%0" : "=a" (cr4) : );
+    return cr4;
+}
+
+static lpaddr_t inline kernel_write_cr4(uint64_t cr4)
+{
+    __asm__ __volatile__("mov %0,%%cr4" :  : "a" (cr4));
+    return cr4;
+}
+
+#include <cpuid/cpuid.h>
+static struct sysret kernel_tlb_tag(struct capability *kern_cap,
+                                    int cmd, uintptr_t *args)
+{
+    uint64_t enable = args[0];
+
+    struct cpuid_regs cpuidregs = CPUID_REGS_INITIAL(1, 0);
+    cpuid_exec(&cpuidregs);
+    if (!(cpuidregs.ecx & (1 << 15))) {
+        printf("kernel_tlb_tag: NOT SUPPORTED\n");
+        return SYSRET(SYS_ERR_ILLEGAL_INVOCATION);
+    }
+
+    lpaddr_t cr3 = paging_x86_64_context_current();
+    if (cr3 & 0xfff) {
+        if (enable) {
+            printf("kernel_tlb_tag: ILLEGAL INVOCATION [%016lx]\n", cr3);
+            return SYSRET(SYS_ERR_ILLEGAL_INVOCATION);
+        } else {
+            paging_context_switch(cr3 & ~(0xFFF));
+        }
+    }
+
+    uint64_t cr4 = kernel_read_cr4();
+    if (enable && !(cr4 & (1UL << 17))) {
+        cr4 |= (1UL << 17);
+        printf("kernel_tlb_tag: ENABLING\n");
+        kernel_write_cr4(cr4);
+        tlb_tags_enabled = 1;
+    } else {
+        if (cr4 & (1UL << 17)) {
+            cr4 &= ~(1UL << 17);
+            printf("kernel_tlb_tag: DISABLING\n");
+            kernel_write_cr4(cr4);
+            tlb_tags_enabled = 0;
+        }
+    }
+
+    return SYSRET(SYS_ERR_OK);
+}
+
 static struct sysret handle_kcb_identify(struct capability *to,
                                          int cmd, uintptr_t *args)
 {
@@ -1088,6 +1165,7 @@ static invocation_handler_t invocations[ObjType_Num][CAP_MAX_CMD] = {
         [KernelCmd_Add_kcb]      = kernel_add_kcb,
         [KernelCmd_Remove_kcb]   = kernel_remove_kcb,
         [KernelCmd_Suspend_kcb_sched]   = kernel_suspend_kcb_sched,
+        [KernelCmd_Toggle_TLB_Tag] = kernel_tlb_tag
     },
     [ObjType_IPI] = {
         [IPICmd_Send_Start] = kernel_send_start_ipi,

@@ -454,6 +454,13 @@ static void inline paging_x86_64_context_switch(lpaddr_t pml4)
                    );
 }
 
+static lpaddr_t inline paging_x86_64_context_current(void)
+{
+    lpaddr_t cr3;
+    __asm__ __volatile__("mov %%cr3,%0" : "=a" (cr3) : );
+    return cr3;
+}
+
 /**
  * \brief Mask out page attributes.
  *

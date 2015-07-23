@@ -469,6 +469,11 @@ static inline errval_t invoke_get_global_paddr(struct capref kernel_cap, genpadd
     return sr.error;
 }
 
+static inline errval_t invoke_toggle_tlb_tags(struct capref kernel_cap, uint8_t enable)
+{
+    return cap_invoke2(kernel_cap, KernelCmd_Toggle_TLB_Tag, enable).error;
+}
+
 /*
  * MVA extensions
  */
@@ -479,9 +484,9 @@ static inline errval_t invoke_vnode_inherit(struct capref dest, capaddr_t src, i
     return cap_invoke5(dest, VNodeCmd_Inherit, src, frombits, start, end).error;
 }
 
-static inline errval_t invoke_vnode_vroot_switch(struct capref dest)
+static inline errval_t invoke_vnode_vroot_switch(struct capref dest, uint16_t tag)
 {
-    return cap_invoke1(dest, VNodeCmd_Switch).error;
+    return cap_invoke2(dest, VNodeCmd_Switch, tag).error;
 }
 
 #endif

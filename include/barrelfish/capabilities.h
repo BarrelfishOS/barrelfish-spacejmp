@@ -154,9 +154,9 @@ static inline errval_t vnode_inherit(struct capref dest, struct capref src,
 /*
  * MVAS extension
  */
-static inline errval_t vnode_vroot_switch(struct capref vroot)
+static inline errval_t vnode_vroot_switch(struct capref vroot, uint16_t tag)
 {
-    return invoke_vnode_vroot_switch(vroot);
+    return invoke_vnode_vroot_switch(vroot, tag);
 }
 
 __END_DECLS

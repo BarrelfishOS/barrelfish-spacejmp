@@ -416,3 +416,16 @@ errval_t monitor_debug_print_cababilities(void)
 
     return err;
 }
+
+errval_t monitor_tlb_tag_toggle(uint8_t enable)
+{
+    errval_t err, msgerr;
+
+    struct monitor_blocking_rpc_client *r = get_monitor_blocking_rpc_client();
+    err = r->vtbl.toggle_tlb_tags(r, enable, &msgerr);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    return msgerr;
+}
