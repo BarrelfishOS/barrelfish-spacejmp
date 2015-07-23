@@ -12,7 +12,32 @@
 #include <string.h>
 
 #include <barrelfish/barrelfish.h>
+#include <octopus/octopus.h>
 #include <vas/vas.h>
+
+#define VAS_IDENTIFIER "/vas/test/"
+
+static struct capref frame, frame2, frame3;
+
+static void alloc_frames(void)
+{
+    errval_t err;
+
+    err = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to attach");
+    }
+
+    err = frame_alloc(&frame2, BASE_PAGE_SIZE, NULL);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to attach");
+    }
+
+    err = frame_alloc(&frame3, BASE_PAGE_SIZE, NULL);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to attach");
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -20,96 +45,119 @@ int main(int argc, char *argv[])
 
     debug_printf("## VAS TEST STARTED\n");
 
-    struct vas *vas;
+    oct_init();
+    vas_enable();
 
-    struct capref frame;
-    err = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
+    size_t proc_id = 0;
+    size_t proc_total = 1;
+    if (argc > 1) {
+        proc_total = atoi(argv[1]);
+        proc_id = atoi(argv[2]);
     }
 
-    struct capref frame2;
-    err = frame_alloc(&frame2, BASE_PAGE_SIZE, NULL);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
-    }
 
-    struct capref frame3;
-    err = frame_alloc(&frame3, BASE_PAGE_SIZE, NULL);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
-    }
+    debug_printf("### num processes: %lu / %lu\n", proc_id, proc_total);
 
-    err = vas_create("first", VAS_PERM_WRITE, &vas);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to create a new VAS");
-    }
+    char* record = NULL;
 
-    err = vas_attach(vas, 0);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
-    }
-    struct vas *vas2;
-    err = vas_create("second", VAS_PERM_WRITE, &vas2);
+    char name[32];
+    snprintf(name, 32, VAS_IDENTIFIER "%lu", proc_id);
+
+    vas_handle_t vas[proc_total];
+
+    alloc_frames();
+
+    debug_printf("[%lu] ### creating VAS\n", proc_id);
+
+    err = vas_create(name, VAS_PERM_WRITE, &vas[proc_id]);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to create a new VAS");
     }
-    err = vas_attach(vas2, 0);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
+
+    err = oct_barrier_enter("vas_test_barrier", &record, proc_total);
+    if(err_is_fail(err)) {
+        USER_PANIC_ERR(err, "enterint barrier");
     }
 
-    void *buf1;
-    err = vas_vspace_map_one_frame(vas, &buf1, frame, BASE_PAGE_SIZE);
+    debug_printf("[%lu] ### proceed with lookup VAS\n", proc_id);
+
+    for (size_t i = 0; i < proc_total; ++i) {
+        if (i != proc_id) {
+            snprintf(name, 32, VAS_IDENTIFIER "%lu", i);
+            debug_printf("### lookup vas '%s'\n", name);
+            err = vas_lookup(name, &vas[i]);
+            if (err_is_fail(err)) {
+                USER_PANIC_ERR(err, "could not lookup AS");
+            }
+        }
+
+        debug_printf("[%lu] ### attaching vas[%lu]\n", proc_id, i);
+
+        err = vas_attach(vas[i], 0);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to attach");
+        }
+    }
+
+    void *buf1, *buf2;
+    debug_printf("[%lu] ### mapping frame vas[%lu]\n", proc_id, proc_id);
+    err = vas_map(vas[proc_id], &buf1, frame, BASE_PAGE_SIZE);
     if(err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }
-    debug_printf("mapped vas1 @ %p\n", buf1);
-
-    void *buf2;
-    err = vas_vspace_map_one_frame(vas2, &buf2, frame2, BASE_PAGE_SIZE);
+    err = vas_map(vas[proc_id], &buf2, frame2, BASE_PAGE_SIZE);
     if(err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }
 
-    debug_printf("mapped vas2 @ %p\n", buf2);
+    debug_printf("[%lu] ### buffer mapped: %p %p\n", proc_id, buf1, buf2);
 
-    void *buf3 = buf2;
-    err = vspace_map_one_frame_fixed((lvaddr_t)buf2, BASE_PAGE_SIZE, frame3, NULL, NULL);
+    err = vspace_map_one_frame_fixed((lvaddr_t)buf1, BASE_PAGE_SIZE, frame3, NULL, NULL);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }
-    debug_printf("mapped vas0 @ %p\n", buf3);
 
-    uint64_t *data = buf3;
-    debug_printf("orig: [%p] *data = %016lx\n", data, *data);
-    *data = 0xcafe0000;
-    debug_printf("orig: [%p] *data = %016lx\n", data, *data);
+    memset(buf1, 0xAA, BASE_PAGE_SIZE);
 
-    err = vas_switch(vas);
+    debug_printf("[%lu] ### switching to created vas\n", proc_id);
+    err = vas_switch(vas[proc_id]);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to attach");
     }
 
-    debug_printf("%s: [%p] *data = %016lx\n", "first", data, *data);
-    *data = 0xbabe0000;
-    debug_printf("%s: [%p] *data = %016lx\n", "first", data, *data);
+    memset(buf1, proc_id + 1, BASE_PAGE_SIZE);
+    memset(buf2, proc_id + 1, BASE_PAGE_SIZE);
 
-    err = vas_switch(vas2);
+    err = oct_barrier_leave(record);
     if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
+        USER_PANIC_ERR(err, "oct barrier leave failed");
     }
 
-    debug_printf("%s: [%p] *data = %016lx\n", "second", data, *data);
-    *data = 0xbeef0000;
-    debug_printf("%s: [%p] *data = %016lx\n", "second", data, *data);
-
-    err = vas_switch(vas);
+    debug_printf("switching back go original address space\n");
+    err = vas_switch(NULL);
     if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to attach");
+        USER_PANIC_ERR(err, "failed to switch to original");
+    }
+    uint64_t *data = buf1;
+    debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
+
+
+
+    for (size_t i = 0; i < proc_total; ++i) {
+        debug_printf("proc[%lu] vas[%lu]: switch to vas %p\n", proc_id, i, vas[i]);
+        err = vas_switch(vas[i]);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to attach");
+        }
+        debug_printf("proc[%lu] vas[%lu]: [%p] *data = %016lx\n", proc_id, i, data, *data);
     }
 
-    debug_printf("%s: [%p] *data = %016lx\n", "first", data, *data);
+    err = vas_switch(NULL);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to switch to original");
+    }
+    debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
+
 
     debug_printf("## VAS TEST TERMINATED\n");
 
