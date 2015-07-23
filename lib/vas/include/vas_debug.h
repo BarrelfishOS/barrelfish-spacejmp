@@ -14,6 +14,7 @@
 #define VAS_DEBUG_GLOBAL_ENABLE 1
 #define VAS_DEBUG_VAS_ENABLE 1
 #define VAS_DEBUG_VSPACE_ENABLE 1
+#define VAS_DEBUG_CLIENT_ENABLE 1
 
 #if VAS_DEBUG_GLOBAL_ENABLE
 #define VAS_DEBUG_PRINTF(x...) debug_printf("[vas] " x);
@@ -31,6 +32,12 @@
 #define VAS_DEBUG_VSPACE(x...) VAS_DEBUG_PRINTF("[vspace] "x)
 #else
 #define VAS_DEBUG_VSPACE(x...)
+#endif
+
+#if VAS_DEBUG_CLIENT_ENABLE
+#define VAS_DEBUG_CLIENT(x...) VAS_DEBUG_PRINTF("[client] "x)
+#else
+#define VAS_DEBUG_CLIENT(x...)
 #endif
 
 #endif /* __VAS_DEBUG_H_ */
