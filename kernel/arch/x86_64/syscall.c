@@ -242,7 +242,7 @@ static struct sysret handle_inherit(struct capability *dest,
         return SYSRET(SYS_ERR_SLOTS_INVALID);
     }
 
-    if (start >= end) {
+    if (start > end) {
         return SYSRET(SYS_ERR_OK);
     }
 
@@ -285,7 +285,7 @@ static struct sysret handle_inherit(struct capability *dest,
     uint64_t *dst_entry = (uint64_t *)local_phys_to_mem(dst_addr);
     uint64_t *src_entry = (uint64_t *)local_phys_to_mem(src_addr);
 
-    for (uint64_t i = start; i < end; ++i) {
+    for (uint64_t i = start; i <= end; ++i) {
         dst_entry[i] = src_entry[i];
     }
 
