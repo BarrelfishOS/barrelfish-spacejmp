@@ -13,14 +13,23 @@
 
 #include <barrelfish/barrelfish.h>
 #include <barrelfish/nameservice_client.h>
-#include <vas/vas.h>
+#include <vas_internal.h>
+#include <vas_vspace.h>
 
 #include <if/vas_defs.h>
 #include <flounder/flounder_txqueue.h>
 
 #define VAS_SERVICE_DEBUG(x...) debug_printf(x);
 
+#define VAS_ID_MASK 0x00ffffffffffffffUL
+#define VAS_ID_MARK 0x1D00000000000000UL
+
+#define VAS_ATTACHED_MAX 16
+
 #define MIN(a,b)        ((a) < (b) ? (a) : (b))
+
+#define EXPECT_SUCCESS(expr, msg...) \
+    if (!(expr)) {USER_PANIC("expr" msg);}
 
 struct vas_client
 {
@@ -29,19 +38,22 @@ struct vas_client
 };
 
 
-struct vas_info
+struct vas_attached
 {
-    vas_id_t id;
-    uint16_t slot;
-    char name[VAS_ID_MAX_LEN];
-    struct capref pagecn;
-    struct vas_client *creator;
-    struct vas_info *next;
-    struct vas_info *prev;
-
+    struct capref vroot;
+    struct vas_attached *next;
 };
 
-#if 0
+struct vas_info
+{
+    struct vas vas;
+    struct vas_client *creator;
+    struct vas_attached *attached;
+    uint64_t map[512/64];
+    struct vas_info *next;
+    struct vas_info *prev;
+};
+
 
 struct vas_info *vas_registered;
 
@@ -63,11 +75,12 @@ static void vas_info_insert(struct vas_info *vi)
     }
 }
 
+
 static struct vas_info *vas_info_lookup(const char *name)
 {
     struct vas_info *vi = vas_registered;
     while(vi) {
-        if (strcmp(name, vi->name) == 0) {
+        if (strcmp(name, vi->vas.name) == 0) {
             return vi;
         }
         vi = vi->next;
@@ -75,6 +88,7 @@ static struct vas_info *vas_info_lookup(const char *name)
     return NULL;
 }
 
+#if 0
 
 static void vas_info_remove(struct vas_info *vi)
 {
@@ -176,76 +190,178 @@ static void vas_create_call__rx(struct vas_binding *_binding, uint8_t *name,
                                 size_t size)
 {
     struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+    struct vas_msg_st *mst = (struct vas_msg_st*)txq_msg_st_alloc(&client->txq);
+    EXPECT_SUCCESS(mst, "could not allocate msg st");
 
     VAS_SERVICE_DEBUG("[request] create: client=%p, name='%s'\n", client,
                       (char *)name);
 
-    //((struct vas_msg_st *)mst)->slot_alloc.slot = 0;
+    mst->mst.send =  vas_create_response_tx;
 
-    mst->send = vas_create_response_tx;
-    txq_send(mst);
+    struct vas_info *vi = calloc(1, sizeof(struct vas_info));
+    if (vi == NULL) {
+        mst->mst.err = LIB_ERR_MALLOC_FAIL;
+    } else {
+        vi->vas.id = (uint64_t)vi;
+        strncpy(vi->vas.name, (char *)name, size);
+        mst->mst.err = vas_vspace_init(&vi->vas);
+        mst->create.id = VAS_ID_MARK | (uint64_t)vi;
+        vas_info_insert(vi);
+    }
+
+    txq_send(&mst->mst);
 }
 
 static void vas_attach_call__rx(struct vas_binding *_binding, uint64_t id,
                                 struct capref vroot)
 {
     struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+    struct vas_msg_st *mst = (struct vas_msg_st*)txq_msg_st_alloc(&client->txq);
+    EXPECT_SUCCESS(mst, "could not allocate msg st");
 
     VAS_SERVICE_DEBUG("[request] attach: client=%p, vas=0x%016lx\n", client, id);
 
-    mst->send = vas_attach_response_tx;
-    txq_send(mst);
+    mst->mst.send =  vas_attach_response_tx;
+
+    if ((id & VAS_ID_MARK) != VAS_ID_MARK) {
+        mst->mst.err = VAS_ERR_NOT_FOUND;
+        txq_send(&mst->mst);
+        VAS_SERVICE_DEBUG("[request] attach: client=%p, not found vas=0x%016lx", client, id);
+        return;
+    }
+
+    struct vas_info *vi = (struct vas_info *)(VAS_ID_MASK & id);
+    if (vi->vas.id != (VAS_ID_MASK & id)) {
+        mst->mst.err = VAS_ERR_NOT_FOUND;
+        txq_send(&mst->mst);
+
+        VAS_SERVICE_DEBUG("[request] attach: client=%p, map error %s\n", client,
+                                  err_getstring(mst->mst.err));
+        return;
+    }
+
+    struct vas_attached *ai = calloc(1, sizeof(struct vas_attached));
+    if (!ai) {
+        mst->mst.err = LIB_ERR_MALLOC_FAIL;
+        txq_send(&mst->mst);
+        return;
+    }
+
+    ai->vroot = vroot;
+    ai->next = vi->attached;
+    vi->attached = ai;
+
+    mst->mst.err = vas_vspace_inherit_regions(&vi->vas, vroot,
+                                              VAS_VSPACE_PML4_SLOT_MIN,
+                                              VAS_VSPACE_PML4_SLOT_MAX);
+
+    txq_send(&mst->mst);
 }
 
 static void vas_detach_call__rx(struct vas_binding *_binding, uint64_t id)
 {
     struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+    struct vas_msg_st *mst = (struct vas_msg_st*)txq_msg_st_alloc(&client->txq);
+    EXPECT_SUCCESS(mst, "could not allocate msg st");
 
     VAS_SERVICE_DEBUG("[request] detach: client=%p, vas=0x%016lx\n", client, id);
 
-    mst->send = vas_detach_response_tx;
-    txq_send(mst);
+    mst->mst.send =  vas_detach_response_tx;
+    txq_send(&mst->mst);
 }
 
 static void vas_map_call__rx(struct vas_binding *_binding, uint64_t id,
                              struct capref frame, uint64_t offset, uint64_t size)
 {
     struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+    struct vas_msg_st *mst = (struct vas_msg_st*)txq_msg_st_alloc(&client->txq);
+    EXPECT_SUCCESS(mst, "could not allocate msg st");
 
     VAS_SERVICE_DEBUG("[request] map: client=%p, vas=0x%016lx, size=0x%016lx\n",
                           client, id, size);
 
-    mst->send = vas_map_response_tx;
-    txq_send(mst);
+    mst->mst.send =  vas_map_response_tx;
+
+    if ((id & VAS_ID_MARK) != VAS_ID_MARK) {
+        mst->mst.err = VAS_ERR_NOT_FOUND;
+        txq_send(&mst->mst);
+        VAS_SERVICE_DEBUG("[request] map: client=%p, invalid vas=0x%016lx", client, id);
+        return;
+    }
+
+    struct vas_info *vi = (struct vas_info *)(VAS_ID_MASK & id);
+    if (vi->vas.id != (VAS_ID_MASK & id)) {
+        mst->mst.err = VAS_ERR_NOT_FOUND;
+        txq_send(&mst->mst);
+        VAS_SERVICE_DEBUG("[request] map: client=%p, not found vas=0x%016lx", client, id);
+        return;
+    }
+
+    void *addr;
+    mst->mst.err = vas_vspace_map_one_frame(&vi->vas, &addr, frame, size);
+    if (err_is_fail(mst->mst.err)) {
+        txq_send(&mst->mst);
+        VAS_SERVICE_DEBUG("[request] map: client=%p, map error %s\n", client,
+                          err_getstring(mst->mst.err));
+        return;
+    }
+
+#define X86_64_PML4_BASE(base)         (((uint64_t)(base) >> 39) & X86_64_PTABLE_MASK)
+
+    uint32_t entry = X86_64_PML4_BASE(addr);
+    uint32_t slot = entry / 64;
+    uint32_t bit = entry % 64;
+
+    if (!(vi->map[slot] & (1UL << bit))) {
+        struct vas_attached *at = vi->attached;
+        while(at) {
+            mst->mst.err = vas_vspace_inherit_regions(&vi->vas, at->vroot, entry, entry);
+            if (err_is_fail(mst->mst.err)) {
+                USER_PANIC_ERR(mst->mst.err, "could not inherit region");
+            }
+            at = at->next;
+        }
+        vi->map[slot] |= (1UL << bit);
+    }
+
+    mst->map.vaddr = (lvaddr_t)addr;
+
+    txq_send(&mst->mst);
 }
 
 static void vas_unmap_call__rx(struct vas_binding *_binding, uint64_t id,
                                uint64_t vaddr)
 {
     struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+    struct vas_msg_st *mst = (struct vas_msg_st*)txq_msg_st_alloc(&client->txq);
+    EXPECT_SUCCESS(mst, "could not allocate msg st");
 
     VAS_SERVICE_DEBUG("[request] unmap: client=%p, bas=0x%016lx, vaddr=0x%016lx\n",
                           client, id, vaddr);
 
-    mst->send = vas_unmap_response_tx;
-    txq_send(mst);
+    mst->mst.send =  vas_unmap_response_tx;
+    txq_send(&mst->mst);
 }
 
 static void vas_lookup_call__rx(struct vas_binding *_binding, uint8_t *name,
                                 size_t size)
 {
     struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+    struct vas_msg_st *mst = (struct vas_msg_st*)txq_msg_st_alloc(&client->txq);
+    EXPECT_SUCCESS(mst, "could not allocate msg st");
 
     VAS_SERVICE_DEBUG("[request] lookup: client=%p, name='%s'\n", client, (char *)name);
 
-    mst->send = vas_lookup_response_tx;
-    txq_send(mst);
+    mst->mst.send =  vas_lookup_response_tx;
+
+    struct vas_info *vi = vas_info_lookup((char *)name);
+    if (vi) {
+        mst->lookup.id = VAS_ID_MARK | vi->vas.id;
+    } else {
+        mst->mst.err = VAS_ERR_NOT_FOUND;
+    }
+
+    txq_send(&mst->mst);
 }
 
 
