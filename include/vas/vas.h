@@ -18,9 +18,14 @@
  * ==============================================================================
  */
 
+///< name of the vas coordinator service
+#define VAS_SERVICE_NAME "vas"
+
+///< forward declaration of struct vas
 struct vas;
 
-typedef struct vas * vas_handle_t;
+///< typedef ot the vas handle
+typedef struct vas *vas_handle_t;
 
 ///< virtual address space identifier
 typedef uint64_t vas_id_t;
@@ -46,6 +51,7 @@ typedef uint32_t vas_perm_t;
 #define VAS_PERM_WRITE      (1 << 1)
 #define VAS_PERM_ALLOC      (1 << 2)
 #define VAS_PERM_EXEC       (1 << 3)
+#define VAS_PERM_LOCAL      (1 << 4)
 
 ///< Lifetime of an address space
 typedef enum vas_life_t {

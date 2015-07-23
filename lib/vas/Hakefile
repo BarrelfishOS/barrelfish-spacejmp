@@ -11,7 +11,7 @@
 --------------------------------------------------------------------------
 
 [( let
-    c_srcs = [ "vas.c", "vas_vspace.c" ]
+    c_srcs = [ "vas.c", "vas_vspace.c", "vas_client.c" ]
     
     arch_srcs "x86_64" = [ "arch/x86_64/vas_vspace_arch.c" ]
     arch_srcs _        = []

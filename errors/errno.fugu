@@ -1160,4 +1160,5 @@ errors vas VAS_ERR_ {
     failure SWITCH_NOT_ATTACHED    "Can't switch to unattached file",
     failure NOT_SUPPORTED          "Currently unsupported functionality",
     failure OUT_OF_HANDLES         "Not enough handles",
+    failure SERVICE_NOT_ENABLED    "VAS service is not enabled",
 };

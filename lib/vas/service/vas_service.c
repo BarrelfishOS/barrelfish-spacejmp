@@ -41,6 +41,8 @@ struct vas_info
 
 };
 
+#if 0
+
 struct vas_info *vas_registered;
 
 /*
@@ -73,7 +75,7 @@ static struct vas_info *vas_info_lookup(const char *name)
     return NULL;
 }
 
-#if 0
+
 static void vas_info_remove(struct vas_info *vi)
 {
 
@@ -106,41 +108,62 @@ struct vas_msg_st
     struct txq_msg_st mst;
     union {
         struct {
-            uint16_t slot;
-        } slot_alloc;
-        struct {
-            struct capref pagecn;
             uint64_t id;
-            uint16_t slot;
+        } create;
+        struct {
+            /* nothing */
+        } attach;
+        struct {
+            /* nothing */
+        } detach;
+        struct {
+            uint64_t vaddr;
+        } map;
+        struct {
+            /* nothing */
+        } unmap;
+        struct {
+            uint64_t id;
         } lookup;
-        struct {
-            uint64_t id;
-        } share;
     };
 };
 
-static errval_t vas_share_response_tx(struct txq_msg_st *st)
+static errval_t vas_create_response_tx(struct txq_msg_st *st)
 {
     struct vas_msg_st *vst = (struct vas_msg_st *)st;
-    return vas_share_response__tx(st->queue->binding, TXQCONT(st), st->err,
-                                  vst->share.id);
+    return vas_create_response__tx(st->queue->binding, TXQCONT(st), st->err,
+                                   vst->create.id);
+}
 
+static errval_t vas_attach_response_tx(struct txq_msg_st *st)
+{
+    return vas_attach_response__tx(st->queue->binding, TXQCONT(st), st->err);
+}
+
+static errval_t vas_detach_response_tx(struct txq_msg_st *st)
+{
+    return vas_detach_response__tx(st->queue->binding, TXQCONT(st), st->err);
+}
+
+static errval_t vas_map_response_tx(struct txq_msg_st *st)
+{
+    struct vas_msg_st *vst = (struct vas_msg_st *)st;
+    return vas_map_response__tx(st->queue->binding, TXQCONT(st), st->err,
+                                vst->map.vaddr);
+}
+
+static errval_t vas_unmap_response_tx(struct txq_msg_st *st)
+{
+    return vas_unmap_response__tx(st->queue->binding, TXQCONT(st), st->err);
 }
 
 static errval_t vas_lookup_response_tx(struct txq_msg_st *st)
 {
     struct vas_msg_st *vst = (struct vas_msg_st *)st;
     return vas_lookup_response__tx(st->queue->binding, TXQCONT(st), st->err,
-                                   vst->lookup.pagecn, vst->lookup.id,
-                                   vst->lookup.slot);
+                                   vst->lookup.id);
 }
 
-static errval_t vas_slot_alloc_response_tx(struct txq_msg_st *st)
-{
-    struct vas_msg_st *vst = (struct vas_msg_st *)st;
-    return vas_slot_alloc_response__tx(st->queue->binding, TXQCONT(st), st->err,
-                                       vst->slot_alloc.slot);
-}
 
 
 /*
@@ -148,36 +171,68 @@ static errval_t vas_slot_alloc_response_tx(struct txq_msg_st *st)
  * Receive handlers
  * ------------------------------------------------------------------------------
  */
-static void vas_share_call__rx(struct vas_binding *_binding, uint8_t *name,
-                               size_t size, struct capref pagecn)
+
+static void vas_create_call__rx(struct vas_binding *_binding, uint8_t *name,
+                                size_t size)
 {
     struct vas_client *client = _binding->st;
     struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
 
-    mst->send = vas_share_response_tx;
+    VAS_SERVICE_DEBUG("[request] create: client=%p, name='%s'\n", client,
+                      (char *)name);
 
-    struct vas_info *vi = calloc(1, sizeof(struct vas_info));
-    if (vi == NULL) {
-        mst->err = LIB_ERR_MALLOC_FAIL;
-        txq_send(mst);
-        return;
-    }
+    //((struct vas_msg_st *)mst)->slot_alloc.slot = 0;
 
-    mst->err = SYS_ERR_OK;
+    mst->send = vas_create_response_tx;
+    txq_send(mst);
+}
 
-    vi->id = (vas_id_t)vi;
-    vi->creator = client;
-    size_t len = MIN(size, VAS_ID_MAX_LEN);
-    memcpy(vi->name, name, len);
-    vi->name[len] = 0;
+static void vas_attach_call__rx(struct vas_binding *_binding, uint64_t id,
+                                struct capref vroot)
+{
+    struct vas_client *client = _binding->st;
+    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
 
-    vi->pagecn = pagecn;
-    vi->slot = 127; // todo: have a define
+    VAS_SERVICE_DEBUG("[request] attach: client=%p, vas=0x%016lx\n", client, id);
 
-    ((struct vas_msg_st *)mst)->share.id = vi->id;
+    mst->send = vas_attach_response_tx;
+    txq_send(mst);
+}
 
-    vas_info_insert(vi);
+static void vas_detach_call__rx(struct vas_binding *_binding, uint64_t id)
+{
+    struct vas_client *client = _binding->st;
+    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
 
+    VAS_SERVICE_DEBUG("[request] detach: client=%p, vas=0x%016lx\n", client, id);
+
+    mst->send = vas_detach_response_tx;
+    txq_send(mst);
+}
+
+static void vas_map_call__rx(struct vas_binding *_binding, uint64_t id,
+                             struct capref frame, uint64_t offset, uint64_t size)
+{
+    struct vas_client *client = _binding->st;
+    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+
+    VAS_SERVICE_DEBUG("[request] map: client=%p, vas=0x%016lx, size=0x%016lx\n",
+                          client, id, size);
+
+    mst->send = vas_map_response_tx;
+    txq_send(mst);
+}
+
+static void vas_unmap_call__rx(struct vas_binding *_binding, uint64_t id,
+                               uint64_t vaddr)
+{
+    struct vas_client *client = _binding->st;
+    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
+
+    VAS_SERVICE_DEBUG("[request] unmap: client=%p, bas=0x%016lx, vaddr=0x%016lx\n",
+                          client, id, vaddr);
+
+    mst->send = vas_unmap_response_tx;
     txq_send(mst);
 }
 
@@ -187,56 +242,20 @@ static void vas_lookup_call__rx(struct vas_binding *_binding, uint8_t *name,
     struct vas_client *client = _binding->st;
     struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
 
+    VAS_SERVICE_DEBUG("[request] lookup: client=%p, name='%s'\n", client, (char *)name);
 
     mst->send = vas_lookup_response_tx;
-
-    struct vas_info *vi = vas_info_lookup((char *)name);
-    if (vi) {
-        if (vi->slot == 512) {
-            mst->err = VAS_ERR_OUT_OF_HANDLES;
-        } else {
-            mst->err = SYS_ERR_OK;
-            ((struct vas_msg_st *)mst)->lookup.id = vi->id;
-            ((struct vas_msg_st *)mst)->lookup.pagecn = vi->pagecn;
-            ((struct vas_msg_st *)mst)->lookup.slot = vi->slot++;
-        }
-    } else {
-        mst->err = VAS_ERR_NOT_FOUND;
-    }
-
-    txq_send(mst);
-}
-
-static  void vas_slot_alloc_call__rx(struct vas_binding *_binding,
-                                     uint64_t id)
-{
-    struct vas_client *client = _binding->st;
-    struct txq_msg_st *mst = txq_msg_st_alloc(&client->txq);
-
-
-    mst->send = vas_slot_alloc_response_tx;
-
-    struct vas_info *vi = (struct vas_info *)id;
-    if (vi->id == id) {
-        if (vi->slot ==512) {
-            ((struct vas_msg_st *)mst)->slot_alloc.slot = 0;
-            mst->err = VAS_ERR_OUT_OF_HANDLES;
-        } else {
-            ((struct vas_msg_st *)mst)->slot_alloc.slot = vi->slot++;
-            mst->err = SYS_ERR_OK;
-        }
-    } else {
-        mst->err = VAS_ERR_NOT_FOUND;
-    }
-
     txq_send(mst);
 }
 
 
-static struct vas_rx_vtbl rx_vtbl= {
-    .share_call = vas_share_call__rx,
-    .lookup_call = vas_lookup_call__rx,
-    .slot_alloc_call = vas_slot_alloc_call__rx
+static struct vas_rx_vtbl rx_vtbl = {
+    .create_call = vas_create_call__rx,
+    .attach_call = vas_attach_call__rx,
+    .detach_call = vas_detach_call__rx,
+    .map_call = vas_map_call__rx,
+    .unmap_call = vas_unmap_call__rx,
+    .lookup_call = vas_lookup_call__rx
 };
 
 /*
@@ -244,14 +263,15 @@ static struct vas_rx_vtbl rx_vtbl= {
  * Connection management
  * ------------------------------------------------------------------------------
  */
+
 static errval_t vas_connect_handler(void *st, struct vas_binding *binding)
 {
-    VAS_SERVICE_DEBUG("new connection from client\n");
-
     struct vas_client *client = calloc(1, sizeof(struct vas_client));
     if (client == NULL) {
         return LIB_ERR_MALLOC_FAIL;
     }
+
+    VAS_SERVICE_DEBUG("[connect] new client %p\n", client);
 
     client->b = binding;
     txq_init(&client->txq, binding, get_default_waitset(),
@@ -265,7 +285,7 @@ static errval_t vas_connect_handler(void *st, struct vas_binding *binding)
 
 static void export_callback_fn(void *st, errval_t err, iref_t iref)
 {
-    VAS_SERVICE_DEBUG("service exported: %s\n", err_getstring(err));
+    VAS_SERVICE_DEBUG("[service] export callback: %s\n", err_getstring(err));
 
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "export failed");
@@ -279,7 +299,7 @@ static void export_callback_fn(void *st, errval_t err, iref_t iref)
         USER_PANIC_ERR(err, "export failed");
     }
 
-    VAS_SERVICE_DEBUG("service registered: [%s] -> [%" PRIxIREF "]\n",
+    VAS_SERVICE_DEBUG("[service] registered with name '%s'::%" PRIxIREF "]\n",
                       VAS_SERVICE_NAME, iref);
 }
 
@@ -288,7 +308,7 @@ int main(int argc, char *argv[])
 {
     errval_t err;
 
-    VAS_SERVICE_DEBUG("vas service started\n");
+    VAS_SERVICE_DEBUG("[service] vas service started\n");
 
     err =  vas_export(NULL, export_callback_fn, vas_connect_handler,
                       get_default_waitset(), 0);
@@ -296,6 +316,8 @@ int main(int argc, char *argv[])
     while(1) {
         messages_wait_and_handle_next();
     }
+
+    VAS_SERVICE_DEBUG("[service] vas service terminated\n");
 
     return 0;
 }

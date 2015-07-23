@@ -20,6 +20,10 @@
             target = "vas_service",
             architectures = [ arch ],
             cFiles = c_srcs ++ arch_srcs (archFamily arch),
+            addIncludes = [
+                "../include", 
+                "../include/arch" ./. archFamily arch
+            ],
             addLibraries = libDeps [
                 "vas"
             ]
