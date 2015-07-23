@@ -15,6 +15,7 @@
 
 #include <vas_internal.h>
 #include <vas_vspace.h>
+#include <vas_client.h>
 
 /**
  * \brief enables the support for multiple virtual address spaces on this dispatcher
@@ -24,7 +25,9 @@
  */
 errval_t vas_enable(void)
 {
-    return SYS_ERR_OK;
+    VAS_DEBUG_LIBVAS("enabling mvas support for domain.\n");
+
+    return vas_client_connect();
 }
 
 /**
@@ -46,8 +49,6 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
 {
     errval_t err;
 
-    VAS_DEBUG_LIBVAS("creating vas '%s'\n", name);
-
     assert(ret_vas);
 
     struct vas *vas = calloc(1, sizeof(struct vas));
@@ -55,15 +56,46 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
         return LIB_ERR_MALLOC_FAIL;
     }
 
-    /* TODO: register name with the vas service to get the VAS ID */
-
-    /* create a new VSPACE */
-    err = vas_vspace_init(vas);
-    if (err_is_fail(err)) {
-        return err;
-    }
+    vas->perms = perm;
 
     strncpy(vas->name, name, VAS_ID_MAX_LEN);
+
+    size_t namelen = strlen(name);
+    if (namelen > VAS_ID_MAX_LEN) {
+        vas->name[VAS_ID_MAX_LEN - 1] = 0;
+    }
+
+    if (perm & VAS_PERM_LOCAL) {
+        VAS_DEBUG_LIBVAS("creating local vas '%s'\n", name);
+        /* create a new VSPACE */
+        err = vas_vspace_init(vas);
+        if (err_is_fail(err)) {
+            free(vas);
+            return err;
+        }
+    } else {
+        VAS_DEBUG_LIBVAS("creating vas '%s'\n", name);
+        err = slot_alloc(&vas->vroot);
+        if(err_is_fail(err)) {
+            free(vas);
+            return err;
+        }
+        err = vas_vspace_create_vroot(vas->vroot);
+        if (err_is_fail(err)) {
+            free(vas);
+            return err;
+        }
+
+        err = vas_client_vas_create(vas->name, perm, &vas->id);
+        if (err_is_fail(err)) {
+            cap_destroy(vas->vroot);
+            slot_free(vas->vroot);
+            free(vas);
+            return err;
+        }
+    }
+
+    /* TODO: register name with the vas service to get the VAS ID */
 
     vas->state = VAS_STATE_DETACHED;
 
@@ -97,26 +129,54 @@ errval_t vas_delete(vas_handle_t vas)
  *          VAS_ERR_NO_PERMISSIONS if the caller has too less permissions
  *
  */
-errval_t vas_lookup_by_name(const char *name, vas_handle_t *ret_vas)
+errval_t vas_lookup(const char *name, vas_handle_t *ret_vas)
 {
-    return VAS_ERR_NOT_FOUND;
+    errval_t err;
+
+
+
+    assert(ret_vas);
+
+    struct vas *vas = calloc(1, sizeof(struct vas));
+    if (vas == NULL) {
+        return LIB_ERR_MALLOC_FAIL;
+    }
+
+    strncpy(vas->name, name, VAS_ID_MAX_LEN);
+
+    size_t namelen = strlen(name);
+    if (namelen > VAS_ID_MAX_LEN) {
+        vas->name[VAS_ID_MAX_LEN - 1] = 0;
+    }
+
+
+    VAS_DEBUG_LIBVAS("looking up vas '%s'\n", name);
+    err = slot_alloc(&vas->vroot);
+    if(err_is_fail(err)) {
+        free(vas);
+        return err;
+    }
+    err = vas_vspace_create_vroot(vas->vroot);
+    if (err_is_fail(err)) {
+        free(vas);
+        return err;
+    }
+
+    err = vas_client_vas_lookup(vas->name, &vas->id);
+    if (err_is_fail(err)) {
+        cap_destroy(vas->vroot);
+        slot_free(vas->vroot);
+        free(vas);
+        return err;
+    }
+
+    vas->state = VAS_STATE_DETACHED;
+
+    *ret_vas = vas;
+
+    return SYS_ERR_OK;
 }
 
-/**
- * \brief Looks up the address space using a human readable name
- *
- * \param id        ID of the VAS to lookup
- * \param ret_vas   returns a handle to the vas
- *
- * \returns SYS_ERR_OK on success
- *          VAS_ERR_NOT_FOUND if there is no such address space
- *          VAS_ERR_NO_PERMISSIONS if the caller has too less permissions
- *
- */
-errval_t vas_lookup_by_id(vas_id_t id, vas_handle_t *ret_vas)
-{
-    return VAS_ERR_NOT_FOUND;
-}
 
 /**
  * \brief attaches a virtual address space to the domain
@@ -128,6 +188,7 @@ errval_t vas_lookup_by_id(vas_id_t id, vas_handle_t *ret_vas)
 errval_t vas_attach(vas_handle_t vas, vas_perm_t perm)
 {
     errval_t err;
+
 
     VAS_DEBUG_LIBVAS("attaching vas '%s'\n", vas->name);
 
@@ -151,6 +212,12 @@ errval_t vas_attach(vas_handle_t vas, vas_perm_t perm)
         return err;
     }
 
+    if (!(vas->perms & VAS_PERM_LOCAL)) {
+        err = vas_client_vas_attach(vas->id, vas->vroot);
+        if (err_is_fail(err)) {
+            return err;
+        }
+    }
     vas->state = VAS_STATE_ATTACHED;
 
     return SYS_ERR_OK;
@@ -186,7 +253,7 @@ errval_t vas_switch(vas_handle_t vas)
         if (vas->state != VAS_STATE_ATTACHED) {
             return VAS_ERR_SWITCH_NOT_ATTACHED;
         }
-        err =  vnode_vroot_switch(vas->vtree);
+        err =  vnode_vroot_switch(vas->vroot);
     } else {
         struct capref vroot = {
             .cnode = cnode_page,
@@ -231,4 +298,19 @@ errval_t vas_set_life(vas_id_t id, vas_life_t lifetime) {return VAS_ERR_NOT_SUPP
 vas_state_t vas_get_state(struct vas *vas)
 {
     return vas->state;
+}
+
+
+errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size)
+{
+    if (!(vas->perms & VAS_PERM_LOCAL)) {
+        return vas_client_seg_map(vas->id, frame, 0, size, 0, (lvaddr_t *) retaddr);
+    } else {
+        return vas_vspace_map_one_frame(vas, retaddr, frame, size);
+    }
+}
+
+errval_t vas_unmap(vas_handle_t vas, void *addr)
+{
+    return VAS_ERR_NOT_SUPPORTED;
 }

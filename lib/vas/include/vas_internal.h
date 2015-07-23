@@ -15,20 +15,21 @@
 #include <vas/vas.h>
 #include <vas_debug.h>
 
+
+
 ///< internal representation of the VAS
 struct vas
 {
     vas_id_t id;                        ///< the vas id
     vas_state_t state;                  ///< the state of the vas
+    vas_perm_t perms;                   ///< associated permissions
     char name[VAS_ID_MAX_LEN];          ///< name of the vas
-
     struct vspace_state vspace_state;   ///< vspace state
     struct capref pagecn_cap;           ///< cap of the page cn
     struct cnoderef pagecn;             ///< pagecn cap
-    struct capref   vtree;              ///< vroot
+    struct capref   vroot;              ///< vroot
     struct single_slot_allocator pagecn_slot_alloc;
 };
-
 
 #endif /* __VAS_INTERNAL_H_ */
 

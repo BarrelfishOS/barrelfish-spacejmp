@@ -14,16 +14,16 @@
 #define PML4_MAPPING_SIZE ((genvaddr_t)512*512*512*BASE_PAGE_SIZE)
 
 
-#define VAS_VSPACE_PML4_SLOT_MIN 128
-#define VAS_VSPACE_PML4_SLOT_MAX 512
+#define VAS_VSPACE_PML4_SLOT_MIN 127
+#define VAS_VSPACE_PML4_SLOT_MAX 511
 
 ///<
-#define VAS_VSPACE_MIN_MAPPABLE (PML4_MAPPING_SIZE * (VAS_VSPACE_PML4_SLOT_MIN - 1))
+#define VAS_VSPACE_MIN_MAPPABLE (PML4_MAPPING_SIZE * (VAS_VSPACE_PML4_SLOT_MIN))
 
 #define VAS_VSPACE_META_RESERVED_SIZE (BASE_PAGE_SIZE * 80000)
 
 ///<
-#define VAS_VSPACE_MAX_MAPPABLE (PML4_MAPPING_SIZE * (VAS_PML4_SLOT_MAX - 1))
+#define VAS_VSPACE_MAX_MAPPABLE (PML4_MAPPING_SIZE * (VAS_PML4_SLOT_MAX))
 
 
 /*
@@ -35,6 +35,12 @@ errval_t vas_vspace_create_vroot(struct capref vroot);
 
 errval_t vas_vspace_inherit_segments(struct vas *vas);
 errval_t vas_vspace_inherit_heap(struct vas *vas);
+errval_t vas_vspace_inherit_regions(struct vas *vas, struct capref vroot);
 
+errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
+                                  struct capref frame, size_t size);
+errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
+                                        struct capref frame, size_t size);
+errval_t vas_vspace_unmap(void *addr);
 
 #endif /* __VAS_VSPACE_H_ */

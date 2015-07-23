@@ -95,8 +95,7 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas);
 errval_t vas_delete(vas_handle_t id);
 
 
-errval_t vas_lookup_by_name(const char* name, vas_handle_t *ret_vas);
-errval_t vas_lookup_by_id(vas_id_t id, vas_handle_t *ret_vas);
+errval_t vas_lookup(const char* name, vas_handle_t *ret_vas);
 
 errval_t vas_get_perm(vas_id_t id, vas_perm_t* perm);
 errval_t vas_set_perm(vas_id_t id, vas_perm_t perm);
@@ -122,12 +121,10 @@ errval_t vas_tagging_tag(vas_id_t id);
 /*
  *
  */
-errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
-                                  struct capref frame, size_t size);
-errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
-                                        struct capref frame, size_t size);
 
-errval_t vas_vspace_unmap(void *addr);
+errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size);
+errval_t vas_unmap(vas_handle_t vas, void *addr);
+
 
 
 #if 0
