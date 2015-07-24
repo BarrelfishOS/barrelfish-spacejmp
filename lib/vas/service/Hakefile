@@ -25,6 +25,13 @@
                 "../include/arch" ./. archFamily arch
             ],
             addLibraries = libDeps [
+                "vas",
+                "bench"
+            ],
+            flounderDefs = [
+                "vas"
+            ],
+            flounderBindings = [
                 "vas"
             ]
         }

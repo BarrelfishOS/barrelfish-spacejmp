@@ -141,8 +141,7 @@ struct vas_msg_st
     struct txq_msg_st mst;
     union {
         struct {
-            uint8_t *name;
-            size_t length;
+            union vas_name_arg n;
         } create;
         struct {
             uint64_t id;
@@ -154,16 +153,16 @@ struct vas_msg_st
         struct {
             uint64_t id;
             struct capref frame;
-            uint64_t offset;
+            uint64_t vaddr;
             uint64_t size;
+            uint32_t flags;
         } map;
         struct {
             uint64_t id;
             uint64_t vaddr;
         } unmap;
         struct {
-            uint8_t *name;
-            size_t length;
+            union vas_name_arg n;
         } lookup;
     };
 };
@@ -171,8 +170,10 @@ struct vas_msg_st
 static errval_t vas_create_call_tx(struct txq_msg_st *st)
 {
     return vas_create_call__tx(st->queue->binding, TXQCONT(st),
-                               ((struct vas_msg_st *)st)->create.name,
-                               ((struct vas_msg_st *)st)->create.length);
+                               ((struct vas_msg_st *)st)->create.n.namefields[0],
+                               ((struct vas_msg_st *)st)->create.n.namefields[1],
+                               ((struct vas_msg_st *)st)->create.n.namefields[2],
+                               ((struct vas_msg_st *)st)->create.n.namefields[3]);
 }
 
 static errval_t vas_attach_call_tx(struct txq_msg_st *st)
@@ -193,9 +194,19 @@ static errval_t vas_map_call_tx(struct txq_msg_st *st)
     return vas_map_call__tx(st->queue->binding, TXQCONT(st),
                             ((struct vas_msg_st *)st)->map.id,
                             ((struct vas_msg_st *)st)->map.frame,
-                            ((struct vas_msg_st *)st)->map.offset,
-                            ((struct vas_msg_st *)st)->map.size);
+                            ((struct vas_msg_st *)st)->map.size,
+                            ((struct vas_msg_st *)st)->map.flags);
 
+}
+
+static errval_t vas_map_fixed_call_tx(struct txq_msg_st *st)
+{
+    return vas_map_fixed_call__tx(st->queue->binding, TXQCONT(st),
+                                  ((struct vas_msg_st *)st)->map.id,
+                                  ((struct vas_msg_st *)st)->map.frame,
+                                  ((struct vas_msg_st *)st)->map.size,
+                                  ((struct vas_msg_st *)st)->map.vaddr,
+                                  ((struct vas_msg_st *)st)->map.flags);
 }
 
 static errval_t vas_unmap_call_tx(struct txq_msg_st *st)
@@ -208,8 +219,10 @@ static errval_t vas_unmap_call_tx(struct txq_msg_st *st)
 static errval_t vas_lookup_call_tx(struct txq_msg_st *st)
 {
     return vas_lookup_call__tx(st->queue->binding, TXQCONT(st),
-                               ((struct vas_msg_st *)st)->lookup.name,
-                               ((struct vas_msg_st *)st)->lookup.length);
+                               ((struct vas_msg_st *)st)->lookup.n.namefields[0],
+                               ((struct vas_msg_st *)st)->lookup.n.namefields[1],
+                               ((struct vas_msg_st *)st)->lookup.n.namefields[2],
+                               ((struct vas_msg_st *)st)->lookup.n.namefields[3]);
 }
 
 
@@ -262,6 +275,17 @@ static void vas_map_response_rx(struct vas_binding *_binding, vas_errval_t msger
     rpc_done(rpc_st);
 }
 
+static void vas_map_fixed_response_rx(struct vas_binding *_binding, vas_errval_t msgerr)
+{
+    struct vas_client_rpc_st *rpc_st = vas_service_client->st;
+
+    VAS_DEBUG_CLIENT("[response] map_fixed seq=%lu\n",rpc_st->callseq);
+
+    rpc_st->err = msgerr;
+
+    rpc_done(rpc_st);
+}
+
 static void vas_unmap_response_rx(struct vas_binding *_binding, vas_errval_t msgerr)
 {
     struct vas_client_rpc_st *rpc_st = vas_service_client->st;
@@ -290,6 +314,7 @@ static struct vas_rx_vtbl vas_rx_vtbl= {
     .attach_response =vas_attach_response_rx,
     .detach_response =vas_detach_response_rx,
     .map_response =vas_map_response_rx,
+    .map_fixed_response =vas_map_fixed_response_rx,
     .unmap_response =vas_unmap_response_rx,
     .lookup_response =vas_lookup_response_rx
 };
@@ -378,8 +403,7 @@ errval_t vas_client_vas_create(char *name, vas_perm_t perms, vas_id_t *id)
     size_t len = strlen(name);
     assert(len < VAS_ID_MAX_LEN);
 
-    mst->create.name = (uint8_t*)name;
-    mst->create.length = len + 1;
+    strncpy(mst->create.n.namestring, name, 31);
 
     /*
      * RPC START SEQUENCE
@@ -414,8 +438,7 @@ errval_t vas_client_vas_lookup(char *name, vas_id_t *id)
     }
     mst->mst.send = vas_lookup_call_tx;
 
-    mst->lookup.length = strlen(name) + 1;
-    mst->lookup.name = (uint8_t*)name;
+    strncpy(mst->lookup.n.namestring, name, 31);
     /*
      * RPC START SEQUENCE
      */
@@ -489,8 +512,8 @@ errval_t vas_client_vas_detach(vas_id_t id)
     return rpc_clear(rpc_st);;
 }
 
-errval_t vas_client_seg_map(vas_id_t id, struct capref frame, lpaddr_t offset,
-                            size_t size, vas_perm_t perms, lvaddr_t *ret_vaddr)
+errval_t vas_client_seg_map(vas_id_t id, struct capref frame, size_t size,
+                            vregion_flags_t flags, lvaddr_t *ret_vaddr)
 {
     if (vas_service_client == NULL) {
         return VAS_ERR_SERVICE_NOT_ENABLED;
@@ -511,8 +534,8 @@ errval_t vas_client_seg_map(vas_id_t id, struct capref frame, lpaddr_t offset,
     mst->mst.send = vas_map_call_tx;
     mst->map.frame = frame;
     mst->map.id = id;
-    mst->map.offset = offset;
     mst->map.size = size;
+    mst->map.flags = flags;
 
     /*
      * RPC START SEQUENCE
@@ -523,6 +546,41 @@ errval_t vas_client_seg_map(vas_id_t id, struct capref frame, lpaddr_t offset,
     if (ret_vaddr) {
         *ret_vaddr = rpc_st->map.vaddr;
     }
+
+    return rpc_clear(rpc_st);
+}
+
+errval_t vas_client_seg_map_fixed(vas_id_t id, lvaddr_t vaddr, struct capref frame,
+                                  size_t size, vregion_flags_t flags)
+{
+    if (vas_service_client == NULL) {
+        return VAS_ERR_SERVICE_NOT_ENABLED;
+    }
+
+    struct vas_client_rpc_st *rpc_st = vas_service_client->st;
+    if (!rpc_start(rpc_st)) {
+        return FLOUNDER_ERR_TX_BUSY;
+    }
+
+    VAS_DEBUG_CLIENT("[call] map_fixed seq=%lu, id=%016lx, addr=%016lx, size=%016lx\n",
+                     rpc_st->callseq, id, vaddr, size);
+
+    struct vas_msg_st *mst = (struct vas_msg_st *)txq_msg_st_alloc(&vas_txq);
+    if (!mst) {
+        return LIB_ERR_MALLOC_FAIL;
+    }
+
+    mst->mst.send = vas_map_fixed_call_tx;
+    mst->map.frame = frame;
+    mst->map.id = id;
+    mst->map.flags = flags;
+    mst->map.size = size;
+
+    /*
+     * RPC START SEQUENCE
+     */
+    txq_send(&mst->mst);
+    rpc_wait_done(rpc_st);
 
     return rpc_clear(rpc_st);
 }

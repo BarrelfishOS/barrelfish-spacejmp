@@ -303,12 +303,12 @@ vas_state_t vas_get_state(struct vas *vas)
 }
 
 
-errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size)
+errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size, vregion_flags_t flags)
 {
     if (!(vas->perms & VAS_PERM_LOCAL)) {
-        return vas_client_seg_map(vas->id, frame, 0, size, 0, (lvaddr_t *) retaddr);
+        return vas_client_seg_map(vas->id, frame, size, flags, (lvaddr_t *) retaddr);
     } else {
-        return vas_vspace_map_one_frame(vas, retaddr, frame, size);
+        return vas_vspace_map_one_frame(vas, retaddr, frame, size, flags);
     }
 }
 

@@ -9,7 +9,10 @@
 
 interface vas "VAS interface" {
 	
-    rpc create(in uint8 name[size],
+    rpc create(in uint64 name0,
+               in uint64 name1,
+               in uint64 name2,
+               in uint64 name4,
                out errval msgerr,
                out uint64 id);
     
@@ -22,16 +25,26 @@ interface vas "VAS interface" {
     
     rpc map(in uint64 id,
             in cap frame,
-            in uint64 offset,
             in uint64 size,
+            in uint32 flags,
             out errval msgerr,
             out uint64 vaddr);
+    
+    rpc map_fixed(in uint64 id,
+                  in cap frame,
+                  in uint64 size,
+                  in uint64 vaddr,
+                  in uint32 fags,
+                  out errval msgerr);
     
     rpc unmap(in uint64 id,
               in uint64 segid,
               out errval msgerr);
     
-    rpc lookup(in uint8 name[size],
+    rpc lookup(in uint64 name0,
+               in uint64 name1,
+               in uint64 name2,
+               in uint64 name4,
                out errval msgerr,
                out uint64 id);
 };

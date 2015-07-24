@@ -122,7 +122,8 @@ errval_t vas_tagging_tag(vas_id_t id);
  *
  */
 
-errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size);
+errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size,
+                 vregion_flags_t flags);
 errval_t vas_unmap(vas_handle_t vas, void *addr);
 
 

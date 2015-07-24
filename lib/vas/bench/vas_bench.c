@@ -23,7 +23,8 @@
         } \
     } while (0)
 
-#define ITERATIONS 256ULL
+//#define ITERATIONS 256ULL
+#define ITERATIONS 32ULL
 
 #if 0
 static void shuffle(size_t *array, size_t n) {
@@ -69,6 +70,8 @@ static uint64_t micro_benchmarks(void) {
     errval_t r;
 
     vas_enable();
+    vas_tagging_enable();
+
 
     static cycles_t overhead = 0;
     //// Loop overhead:
@@ -98,16 +101,30 @@ static uint64_t micro_benchmarks(void) {
             assert(err_is_ok(r));
         }
         cycles_t end = bench_tsc();
-        printf("Create VAS time = %llu\n", (end - start) / ITERATIONS);
+        printf("create_vas: %llu cycles (avg)\n", (end - start) / ITERATIONS);
     }
 
     {
         cycles_t start = bench_tsc();
         for (size_t iter=0; iter<ITERATIONS; iter++) {
-            vas_attach(vas[iter], 0);
+            r = vas_attach(vas[iter], 0);
+            assert(err_is_ok(r));
         }
         cycles_t end = bench_tsc();
-        printf("vas_create (attach) syscall time = %llu\n", (end - start) / ITERATIONS);
+        printf("vas_attach: %llu cycles (avg)\n", (end - start) / ITERATIONS);
+    }
+
+    {
+        struct capref frame;
+        r = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
+        assert(err_is_ok(r));
+        cycles_t start = bench_tsc();
+        for (size_t iter=0; iter<ITERATIONS; iter++) {
+            void *addr;
+            vas_map(vas[iter], &addr, frame, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
+        }
+        cycles_t end = bench_tsc();
+        printf("vas_map: %llu cycles (avg)\n", (end - start) / ITERATIONS);
     }
 
     /// Switching:
@@ -120,7 +137,7 @@ static uint64_t micro_benchmarks(void) {
             CHECK(r, "switch back", vas_switch(NULL));
         }
         cycles_t end = bench_tsc();
-        printf("vas_switch = %llu\n", (end - start) / ITERATIONS / 2);
+        printf("vas_switch: %llu cycles (avg)\n", (end - start) / ITERATIONS / 2);
     }
 
 

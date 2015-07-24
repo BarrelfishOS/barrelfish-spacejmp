@@ -103,11 +103,11 @@ int main(int argc, char *argv[])
 
     void *buf1, *buf2;
     debug_printf("[%lu] ### mapping frame vas[%lu]\n", proc_id, proc_id);
-    err = vas_map(vas[proc_id], &buf1, frame, BASE_PAGE_SIZE);
+    err = vas_map(vas[proc_id], &buf1, frame, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
     if(err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }
-    err = vas_map(vas[proc_id], &buf2, frame2, BASE_PAGE_SIZE);
+    err = vas_map(vas[proc_id], &buf2, frame2, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
     if(err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }

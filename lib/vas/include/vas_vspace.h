@@ -35,9 +35,11 @@ errval_t vas_vspace_create_vroot(struct capref vroot);
 
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
-                                  struct capref frame, size_t size);
+                                  struct capref frame, size_t size,
+                                  vregion_flags_t flags);
 errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
-                                        struct capref frame, size_t size);
+                                  struct capref frame, size_t size,
+                                  vregion_flags_t flags);
 errval_t vas_vspace_unmap(void *addr);
 
 /**

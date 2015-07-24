@@ -185,17 +185,27 @@ errval_t vas_vspace_init(struct vas *vas)
 }
 
 
-
-
-
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
-                                  struct capref frame, size_t size)
+                                  struct capref frame, size_t size,
+                                  vregion_flags_t flags)
 {
     VAS_DEBUG_VSPACE("mapping new frame in vas %s\n", vas->name);
 
     errval_t err;
     struct vregion *vregion = NULL;
-    struct memobj_one_frame *memobj = NULL;
+    struct memobj *memobj = NULL;
+
+    size_t alignment;
+    if (flags & VREGION_FLAGS_HUGE) {
+        size = ROUND_UP(size, HUGE_PAGE_SIZE);
+        alignment = HUGE_PAGE_SIZE;
+    } else if (flags & VREGION_FLAGS_LARGE) {
+        size = ROUND_UP(size, LARGE_PAGE_SIZE);
+        alignment = LARGE_PAGE_SIZE;
+    } else {
+        size = ROUND_UP(size, BASE_PAGE_SIZE);
+        alignment = BASE_PAGE_SIZE;
+    }
 
 #ifdef VAS_CONFIG_MULTI_DOMAIN_META
 
@@ -210,30 +220,30 @@ errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
     vregion = space;
     memobj = space + sizeof(struct vregion);
 
-
-    err = memobj_create_one_frame(memobj, size, 0);
+    err = memobj_create_one_frame((struct memobj_one_frame *)memobj, size, 0);
     if (err_is_fail(err)) {
         err = err_push(err, LIB_ERR_MEMOBJ_CREATE_ANON);
         goto error;
     }
-    err = memobj->m.f.fill(&memobj->m, 0, frame, size);
+    err = memobj->f.fill(memobj, 0, frame, size);
     if (err_is_fail(err)) {
         err = err_push(err, LIB_ERR_MEMOBJ_FILL);
         goto error;
     }
-    err = vregion_map(vregion, &vas->vspace_state.vspace, &memobj->m, 0, size,
-                      VREGION_FLAGS_READ_WRITE);
+
+    err = vregion_map_aligned(vregion, &vas->vspace_state.vspace, memobj, 0, size,
+                              flags, alignment);
     if (err_is_fail(err)) {
         err = err_push(err, LIB_ERR_VSPACE_MAP);
         goto error;
     }
-    err = memobj->m.f.pagefault(&memobj->m, vregion, 0, 0);
+    err = memobj->f.pagefault(memobj, vregion, 0, 0);
     if (err_is_fail(err)) {
         err = err_push(err, LIB_ERR_MEMOBJ_PAGEFAULT_HANDLER);
         goto error;
     }
 
-    *retaddr = (void *)vregion_get_base_addr(vregion);
+    *retaddr = (void*)vspace_genvaddr_to_lvaddr(vregion_get_base_addr(vregion));
 
     VAS_DEBUG_VSPACE("mapped frame in vas %s @ %016lx\n", vas->name,
                      vregion_get_base_addr(vregion));
@@ -241,12 +251,86 @@ errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
     return SYS_ERR_OK;
 
     error: // XXX: proper cleanup
-    if (vregion) {
-        free(vregion);
+    if (space) {
+        free(space);
     }
-    if (memobj) {
-        free(memobj);
+
+    return err;
+}
+
+errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
+                                  struct capref frame, size_t size,
+                                  vregion_flags_t flags)
+{
+    VAS_DEBUG_VSPACE("mapping new frame in vas %s\n", vas->name);
+
+    errval_t err;
+    struct vregion *vregion = NULL;
+    struct memobj *memobj = NULL;
+
+    if (flags & VREGION_FLAGS_HUGE) {
+        size = ROUND_UP(size, HUGE_PAGE_SIZE);
+        if (addr & ~(HUGE_PAGE_SIZE)) {
+            return LIB_ERR_VREGION_BAD_ALIGNMENT;
+        }
+    } else if (flags & VREGION_FLAGS_LARGE) {
+        size = ROUND_UP(size, LARGE_PAGE_SIZE);
+        if (addr & ~(LARGE_PAGE_SIZE)) {
+            return LIB_ERR_VREGION_BAD_ALIGNMENT;
+        }
+    } else {
+        size = ROUND_UP(size, BASE_PAGE_SIZE);
+        if (addr & ~(BASE_PAGE_SIZE)) {
+            return LIB_ERR_VREGION_BAD_ALIGNMENT;
+        }
     }
+
+#ifdef VAS_CONFIG_MULTI_DOMAIN_META
+
+    void *space = slab_alloc(&vas->vspace_slabs);
+    if (!space) {
+        return LIB_ERR_MALLOC_FAIL;
+    }
+#else
+    void *space = calloc(1, sizeof(struct vregion) + sizeof(struct memobj_one_frame));
+#endif
+
+    vregion = space;
+    memobj = space + sizeof(struct vregion);
+
+    err = memobj_create_one_frame((struct memobj_one_frame *)memobj, size, 0);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_MEMOBJ_CREATE_ANON);
+        goto error;
+    }
+    err = memobj->f.fill(memobj, 0, frame, size);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_MEMOBJ_FILL);
+        goto error;
+    }
+
+    err = vregion_map_fixed(vregion, &vas->vspace_state.vspace, memobj, 0, size,
+                            addr, flags);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_VSPACE_MAP);
+        goto error;
+    }
+    err = memobj->f.pagefault(memobj, vregion, 0, 0);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_MEMOBJ_PAGEFAULT_HANDLER);
+        goto error;
+    }
+
+    VAS_DEBUG_VSPACE("mapped frame in vas %s @ %016lx\n", vas->name,
+                     vregion_get_base_addr(vregion));
+
+    return SYS_ERR_OK;
+
+    error: // XXX: proper cleanup
+    if (space) {
+        free(space);
+    }
+
     return err;
 }
 
