@@ -28,7 +28,7 @@ static void alloc_frames(void)
         USER_PANIC_ERR(err, "failed to attach");
     }
 
-    err = frame_alloc(&frame2, BASE_PAGE_SIZE, NULL);
+    err = frame_alloc(&frame2, LARGE_PAGE_SIZE, NULL);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to attach");
     }
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
     if(err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }
-    err = vas_map(vas[proc_id], &buf2, frame2, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
+    err = vas_map(vas[proc_id], &buf2, frame2, LARGE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE | VREGION_FLAGS_LARGE);
     if(err_is_fail(err)) {
         USER_PANIC_ERR(err, "mapping frame");
     }
