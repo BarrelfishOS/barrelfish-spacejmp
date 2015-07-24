@@ -312,7 +312,7 @@ static void walk_cspace(struct cnoderef cnode, uint8_t level)
  */
 void debug_cspace(struct capref root)
 {
-    struct capability cap;
+    struct capability cap = {0};
 
     /* find out size of root cnode */
     errval_t err = debug_cap_identify(root, &cap);

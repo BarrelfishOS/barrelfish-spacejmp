@@ -484,7 +484,7 @@ cpio_get_file_by_ordinal(
     size_t*         file_bytes
     )
 {
-    cpio_generic_header_t h;
+    cpio_generic_header_t h = {0};
     struct cpio_find_info cfi = { NULL, ordinal, NULL };
 
     cpio_visit(cpio_base, cpio_bytes, cpio_match_file_ordinal, &h, &cfi);

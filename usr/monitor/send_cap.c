@@ -116,7 +116,7 @@ captx_abort_recv(intermon_captx_t *captx, struct captx_abort_state *state,
         state->abort_cont(SYS_ERR_OK, state, state->st);
     }
     else {
-        struct capref cap;
+        struct capref cap = NULL_CAP;
         err = captx_get_capref(captx->cnptr, captx->cnbits, captx->slot, &cap);
         if (err_is_fail(err)) {
             state->abort_cont(err, state, state->st);
