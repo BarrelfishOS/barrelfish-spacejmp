@@ -539,7 +539,7 @@ static errval_t refill_slabs(struct pmap_x86 *pmap, size_t request)
 /// Minimally refill the slab allocator
 static errval_t min_refill_slabs(struct pmap_x86 *pmap)
 {
-    return refill_slabs(pmap, 5);
+    return refill_slabs(pmap, (1<< (VNODE_CACHE_REFILL_BITS + 2)));
 }
 
 /**
@@ -601,7 +601,8 @@ static errval_t map(struct pmap *pmap, genvaddr_t vaddr, struct capref frame,
     // Refill slab allocator if necessary
     size_t slabs_free = slab_freecount(&x86->slab);
 
-    max_slabs += 5; // minimum amount required to map a page
+    // minimum amount required to map a pages
+    max_slabs += (1<< (VNODE_CACHE_REFILL_BITS + 2));
     if (slabs_free < max_slabs) {
         struct pmap *mypmap = get_current_pmap();
         if (pmap == mypmap) {
@@ -610,7 +611,7 @@ static errval_t map(struct pmap *pmap, genvaddr_t vaddr, struct capref frame,
                 return err_push(err, LIB_ERR_SLAB_REFILL);
             }
         } else {
-            size_t bytes = SLAB_STATIC_SIZE(max_slabs - slabs_free,
+            size_t bytes = SLAB_STATIC_SIZE(max_slabs + PMAP_MIN_SLABS - slabs_free,
                                             sizeof(struct vnode));
             void *buf = malloc(bytes);
             if (!buf) {

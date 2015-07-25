@@ -16,6 +16,12 @@
 #ifndef TARGET_X86_BARRELFISH_PMAP_X86_H
 #define TARGET_X86_BARRELFISH_PMAP_X86_H
 
+#define VNODE_CACHE_REFILL_BITS 3
+
+#define PMAP_MIN_SLABS ((1 << VNODE_CACHE_REFILL_BITS) \
+                        + (1<<(VNODE_CACHE_REFILL_BITS+1)) \
+                        + (1<<(VNODE_CACHE_REFILL_BITS+2)))
+
 struct pmap;
 
 errval_t pmap_x86_serialise(struct pmap *pmap, void *buf, size_t buflen);

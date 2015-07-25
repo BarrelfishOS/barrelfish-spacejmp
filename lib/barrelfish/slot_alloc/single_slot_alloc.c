@@ -18,6 +18,59 @@
 #include <barrelfish/barrelfish.h>
 #include <barrelfish/caddr.h>
 
+/**
+ * \brief allows for allocation of a consecutive region of slots
+ */
+static errval_t srange_alloc(struct slot_allocator *ca, cslot_t nslots, struct capref *cap)
+{
+    struct single_slot_allocator *sca = (struct single_slot_allocator*)ca;
+
+    if (sca->a.space < nslots) {
+        return LIB_ERR_SLOT_ALLOC_NO_SPACE;
+    }
+
+    thread_mutex_lock(&ca->mutex);
+
+    cap->cnode = sca->cnode;
+
+    struct cnode_meta *walk_prev, *walk = sca->head;
+    while(walk) {
+        if (walk->space >= nslots) {
+            break;
+        }
+        walk_prev = walk;
+        walk = walk->next;
+    }
+
+    if (walk == NULL) {
+        thread_mutex_unlock(&ca->mutex);
+        return LIB_ERR_SLOT_ALLOC_NO_SPACE;
+    }
+
+    /* we have a walk that has enough space */
+    cap->slot = walk->slot;
+
+    /* decrement space */
+    walk->space -= nslots;
+    walk->slot += nslots;
+    sca->a.space -= nslots;
+
+    if (walk->space == 0) {
+        if (walk == sca->head) {
+            sca->head = walk->next;
+            slab_free(&sca->slab, walk);
+        } else {
+            assert(walk_prev);
+            walk_prev->next = walk->next;
+            slab_free(&sca->slab, walk);
+        }
+    }
+
+    thread_mutex_unlock(&ca->mutex);
+
+    return SYS_ERR_OK;
+}
+
 static errval_t salloc(struct slot_allocator *ca, struct capref *ret)
 {
     struct single_slot_allocator *sca = (struct single_slot_allocator*)ca;
@@ -148,6 +201,7 @@ errval_t single_slot_alloc_init_raw(struct single_slot_allocator *ret,
 {
     /* Generic part */
     ret->a.alloc = salloc;
+    ret->a.alloc_range = srange_alloc;
     ret->a.free  = sfree;
     ret->a.space = nslots;
     ret->a.nslots = nslots;

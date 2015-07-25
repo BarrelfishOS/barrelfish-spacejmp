@@ -46,6 +46,9 @@ struct pmap_x86 {
     genvaddr_t min_mappable_va; ///< Minimum mappable virtual address
     genvaddr_t max_mappable_va; ///< Maximum mappable virtual address
     uint8_t slab_buffer[512];   ///< Initial buffer to back the allocator
+    struct vnode  *cache_ptable;
+    struct vnode  *cache_pdir;
+    struct vnode  *cache_pdpt;
 };
 
 #endif // TARGET_X86_BARRELFISH_PMAP_H

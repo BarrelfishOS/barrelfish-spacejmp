@@ -25,6 +25,7 @@ __BEGIN_DECLS
 
 struct slot_allocator {
     errval_t (*alloc)(struct slot_allocator *ca, struct capref *cap);
+    errval_t (*alloc_range)(struct slot_allocator *ca, cslot_t nslots, struct capref *cap);
     errval_t (*free)(struct slot_allocator *ca, struct capref cap);
     struct thread_mutex mutex;     ///< Mutex for thread safety
     cslot_t nslots;                ///< Slots to grow allocator by

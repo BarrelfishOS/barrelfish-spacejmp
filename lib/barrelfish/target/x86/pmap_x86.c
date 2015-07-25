@@ -17,6 +17,144 @@
 #include <barrelfish/pmap.h>
 #include "target/x86/pmap_x86.h"
 
+/**
+ * \brief fallback allocation for vnodes
+ */
+static errval_t vnode_alloc_single(struct pmap_x86 *pmap, enum objtype type,
+                                   struct vnode **retvnode)
+{
+    errval_t err;
+
+    struct vnode *newvnode = slab_alloc(&pmap->slab);
+    if (newvnode == NULL) {
+        return LIB_ERR_SLAB_ALLOC_FAIL;
+    }
+
+    // The VNode capability
+    err = pmap->p.slot_alloc->alloc(pmap->p.slot_alloc, &newvnode->u.vnode.cap);
+    if (err_is_fail(err)) {
+        return err_push(err, LIB_ERR_SLOT_ALLOC);
+    }
+
+    err = vnode_create(newvnode->u.vnode.cap, type);
+    if (err_is_fail(err)) {
+        return err_push(err, LIB_ERR_VNODE_CREATE);
+    }
+
+    *retvnode = newvnode;
+
+    return SYS_ERR_OK;
+}
+
+/**
+ * \brief allocates a new vnode from a cache or refills the cache
+ */
+static errval_t vnode_alloc_cached(struct pmap_x86 *pmap, enum objtype type,
+                                   struct vnode **retvnode)
+{
+    errval_t err;
+
+    uint8_t num_bits = VNODE_CACHE_REFILL_BITS;
+
+    /* use normal allocation if there is no range alloc */
+    if (!pmap->p.slot_alloc->alloc_range) {
+        return vnode_alloc_single(pmap, type, retvnode);
+    }
+
+    struct vnode **cache = NULL;
+    switch(type) {
+        case ObjType_VNode_x86_64_pdpt :
+            cache = &pmap->cache_pdpt;
+        break;
+        case ObjType_VNode_x86_64_pdir :
+            cache = &pmap->cache_pdir;
+            num_bits += 1;
+            break;
+        case ObjType_VNode_x86_64_ptable :
+            num_bits += 2;
+            cache = &pmap->cache_ptable;
+            break;
+        default:
+            debug_printf("unsupported type failed\n");
+            return vnode_alloc_single(pmap, type, retvnode);
+    }
+
+    /* check if we have a cached vnode and return this */
+    struct vnode *newvnode = *cache;
+    if (newvnode) {
+        *cache = newvnode->next;
+        *retvnode = newvnode;
+        return SYS_ERR_OK;
+    }
+
+    /* allocate a ram region for retyping */
+    struct capref ram;
+    size_t objbits_vnode = vnode_objbits(type);
+    err = ram_alloc(&ram, objbits_vnode + num_bits);
+    if (err_is_fail(err)) {
+        return vnode_alloc_single(pmap, type, retvnode);
+    }
+
+    /* allocate a range of slots in the slot allocator */
+    cslot_t vn_cap_slot;
+    struct capref vn_cap;
+    err = pmap->p.slot_alloc->alloc_range(pmap->p.slot_alloc, (1<<num_bits), &vn_cap);
+    if (err_is_fail(err)) {
+        return vnode_alloc_single(pmap, type, retvnode);
+    }
+
+    vn_cap_slot = vn_cap.slot;
+
+    /* allocate a new block of vnodes and set the cap accordingly*/
+    struct vnode *newlist = NULL;
+    uint32_t vnodes_created;
+    for (vnodes_created = 0; vnodes_created < (1 << num_bits); vnodes_created++) {
+        newvnode = slab_alloc(&pmap->slab);
+        if (newvnode == NULL) {
+            newvnode = newlist;
+            break;
+        }
+        newvnode->u.vnode.cap = vn_cap;
+
+        vn_cap.slot++;
+        newvnode->next = newlist;
+        newlist = newvnode;
+    }
+
+    if (vnodes_created == 0) {
+        return LIB_ERR_SLAB_ALLOC_FAIL;
+    }
+
+    vn_cap.slot = vn_cap_slot;
+
+    /* retype the ram cap into the range of allocated slots */
+    err = cap_retype(vn_cap, ram, type, objbits_vnode + num_bits);
+    if (err_is_fail(err)) {
+        return err_push(err, LIB_ERR_CAP_RETYPE);
+    }
+
+    err = cap_destroy(ram);
+    if (err_is_fail(err)) {
+        return err_push(err, LIB_ERR_CAP_DESTROY);
+    }
+
+    /* get the first one from the vnode list and remove it */
+    *retvnode = newlist;
+    newlist = newlist->next;
+
+    /* update the vnode cache */
+    newvnode->next = *cache;
+    *cache = newlist;
+
+    return SYS_ERR_OK;
+}
+
+static errval_t vnode_free_cached(struct pmap_x86 *pmap, struct vnode *vnode)
+{
+    debug_printf("##################3 NYI: leaking memory!\n");
+    return SYS_ERR_OK;
+}
+
 // this should work for x86_64 and x86_32.
 bool has_vnode(struct vnode *root, uint32_t entry, size_t len,
                bool only_pages)
@@ -160,20 +298,10 @@ errval_t alloc_vnode(struct pmap_x86 *pmap, struct vnode *root,
 {
     errval_t err;
 
-    struct vnode *newvnode = slab_alloc(&pmap->slab);
-    if (newvnode == NULL) {
-        return LIB_ERR_SLAB_ALLOC_FAIL;
-    }
-
-    // The VNode capability
-    err = pmap->p.slot_alloc->alloc(pmap->p.slot_alloc, &newvnode->u.vnode.cap);
+    struct vnode *newvnode = NULL;
+    err = vnode_alloc_cached(pmap, type, &newvnode);
     if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_SLOT_ALLOC);
-    }
-
-    err = vnode_create(newvnode->u.vnode.cap, type);
-    if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_VNODE_CREATE);
+        return err_push(err, SYS_ERR_OK);
     }
 
     // Map it
@@ -219,16 +347,10 @@ void remove_empty_vnodes(struct pmap_x86 *pmap, struct vnode *root,
                         err_getstring(err));
             }
 
-            // delete capability
-            err = cap_destroy(n->u.vnode.cap);
-            if (err_is_fail(err)) {
-                debug_printf("remove_empty_vnodes: cap_destroy: %s\n",
-                        err_getstring(err));
-            }
-
-            // remove vnode from list
             remove_vnode(root, n);
-            slab_free(&pmap->slab, n);
+
+            /* return the vnode to the cached list */
+            vnode_free_cached(pmap, n);
         }
     }
 }
