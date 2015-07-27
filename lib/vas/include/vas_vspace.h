@@ -36,10 +36,10 @@ errval_t vas_vspace_create_vroot(struct capref vroot);
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
                                   struct capref frame, size_t size,
-                                  vregion_flags_t flags);
+                                  vas_flags_t flags);
 errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
                                   struct capref frame, size_t size,
-                                  vregion_flags_t flags);
+                                  vas_flags_t flags);
 errval_t vas_vspace_unmap(void *addr);
 
 /**
@@ -87,7 +87,8 @@ static inline errval_t vas_vspace_inherit_heap(struct vas *vas)
  * \returns SYS_ERR_OK on success
  *          errval or error
  */
-static inline errval_t vas_vspace_inherit_regions(struct vas *vas, struct capref vroot,
+static inline errval_t vas_vspace_inherit_regions(struct vas *vas,
+                                                  struct capref vroot,
                                                   uint32_t start, uint32_t end)
 {
     return vnode_inherit(vroot, vas->vroot, start, end);

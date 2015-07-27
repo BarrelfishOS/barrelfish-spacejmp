@@ -46,7 +46,7 @@ errval_t vas_enable(void)
  * \returns SYS_ERR_OK success
  *          errval on error
  */
-errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
+errval_t vas_create(const char* name, vas_flags_t perm, vas_handle_t *ret_vas)
 {
     errval_t err;
 
@@ -59,14 +59,14 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
 
     vas->perms = perm;
 
-    strncpy(vas->name, name, VAS_ID_MAX_LEN);
+    strncpy(vas->name, name, VAS_NAME_MAX_LEN);
 
     size_t namelen = strlen(name);
-    if (namelen > VAS_ID_MAX_LEN) {
-        vas->name[VAS_ID_MAX_LEN - 1] = 0;
+    if (namelen > VAS_NAME_MAX_LEN) {
+        vas->name[VAS_NAME_MAX_LEN - 1] = 0;
     }
 
-    if (perm & VAS_PERM_LOCAL) {
+    if (perm & VAS_FLAGS_PERM_LOCAL) {
         VAS_DEBUG_LIBVAS("creating local vas '%s'\n", name);
         /* create a new VSPACE */
         err = vas_vspace_init(vas);
@@ -101,7 +101,7 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
     vas->state = VAS_STATE_DETACHED;
     vas->tag = (vas->id + 2);
 
-    *ret_vas = vas;
+    *ret_vas = vas_get_handle(vas);
 
     return SYS_ERR_OK;
 }
@@ -115,8 +115,10 @@ errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas)
  * \return SYS_ERR_OK on success
  *         VAS_ERR_* on failure
  */
-errval_t vas_delete(vas_handle_t vas)
+errval_t vas_delete(vas_handle_t vh)
 {
+    //struct vas *vas = vas_get_vas_pointer(vh);
+
     return VAS_ERR_NOT_SUPPORTED;
 }
 
@@ -144,11 +146,11 @@ errval_t vas_lookup(const char *name, vas_handle_t *ret_vas)
         return LIB_ERR_MALLOC_FAIL;
     }
 
-    strncpy(vas->name, name, VAS_ID_MAX_LEN);
+    strncpy(vas->name, name, VAS_NAME_MAX_LEN);
 
     size_t namelen = strlen(name);
-    if (namelen > VAS_ID_MAX_LEN) {
-        vas->name[VAS_ID_MAX_LEN - 1] = 0;
+    if (namelen > VAS_NAME_MAX_LEN) {
+        vas->name[VAS_NAME_MAX_LEN - 1] = 0;
     }
 
 
@@ -174,7 +176,7 @@ errval_t vas_lookup(const char *name, vas_handle_t *ret_vas)
 
     vas->state = VAS_STATE_DETACHED;
 
-    *ret_vas = vas;
+    *ret_vas = vas_get_handle(vas);
 
     return SYS_ERR_OK;
 }
@@ -187,10 +189,11 @@ errval_t vas_lookup(const char *name, vas_handle_t *ret_vas)
  *
  * \return
  */
-errval_t vas_attach(vas_handle_t vas, vas_perm_t perm)
+errval_t vas_attach(vas_handle_t vh, vas_flags_t perm)
 {
     errval_t err;
 
+    struct vas *vas = vas_get_vas_pointer(vh);
 
     VAS_DEBUG_LIBVAS("attaching vas '%s'\n", vas->name);
 
@@ -214,7 +217,7 @@ errval_t vas_attach(vas_handle_t vas, vas_perm_t perm)
         return err;
     }
 
-    if (!(vas->perms & VAS_PERM_LOCAL)) {
+    if (!(vas->perms & VAS_FLAGS_PERM_LOCAL)) {
         err = vas_client_vas_attach(vas->id, vas->vroot);
         if (err_is_fail(err)) {
             return err;
@@ -232,8 +235,10 @@ errval_t vas_attach(vas_handle_t vas, vas_perm_t perm)
  *
  * \return
  */
-errval_t vas_detach(vas_handle_t vas)
+errval_t vas_detach(vas_handle_t vh)
 {
+    //struct vas *vas = vas_get_vas_pointer(vh);
+
     return VAS_ERR_NOT_SUPPORTED;
 }
 
@@ -245,9 +250,11 @@ errval_t vas_detach(vas_handle_t vas)
  * \return SYS_ERR_OK on success
  *         VAS_ERR_SWITCH_NOT_ATTACHED
  */
-errval_t vas_switch(vas_handle_t vas)
+errval_t vas_switch(vas_handle_t vh)
 {
     VAS_DEBUG_LIBVAS("switching to vas '%s'\n", vas->name);
+
+    struct vas *vas = vas_get_vas_pointer(vh);
 
     errval_t err;
 
@@ -283,8 +290,9 @@ errval_t vas_switch(vas_handle_t vas)
  *
  * \return
  */
-errval_t vas_switchm(vas_handle_t vas, vas_handle_t *rev_vas)
+errval_t vas_switchm(vas_handle_t vh, vas_handle_t *rev_vas)
 {
+    //struct vas *vas = vas_get_vas_pointer(vh);
     return VAS_ERR_NOT_SUPPORTED;
 }
 
@@ -292,28 +300,32 @@ errval_t vas_switchm(vas_handle_t vas, vas_handle_t *rev_vas)
 /*
  *
  */
-errval_t vas_get_perm(vas_id_t id, vas_perm_t* perm) { return VAS_ERR_NOT_SUPPORTED; }
-errval_t vas_set_perm(vas_id_t id, vas_perm_t perm) {return VAS_ERR_NOT_SUPPORTED; }
+errval_t vas_get_perm(vas_id_t id, vas_flags_t* perm) { return VAS_ERR_NOT_SUPPORTED; }
+errval_t vas_set_perm(vas_id_t id, vas_flags_t perm) {return VAS_ERR_NOT_SUPPORTED; }
 errval_t vas_get_life(vas_id_t id, vas_life_t* life) {return VAS_ERR_NOT_SUPPORTED;}
 errval_t vas_set_life(vas_id_t id, vas_life_t lifetime) {return VAS_ERR_NOT_SUPPORTED;}
 
-vas_state_t vas_get_state(struct vas *vas)
+vas_state_t vas_get_state(vas_handle_t vh)
 {
-    return vas->state;
+    return vas_get_vas_pointer(vh)->state;
 }
 
 
-errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size, vregion_flags_t flags)
+errval_t vas_map(vas_handle_t vh, void **retaddr, struct capref frame, size_t size, vregion_flags_t flags)
 {
-    if (!(vas->perms & VAS_PERM_LOCAL)) {
+    struct vas *vas = vas_get_vas_pointer(vh);
+
+    if (!(vas->perms & VAS_FLAGS_PERM_LOCAL)) {
         return vas_client_seg_map(vas->id, frame, size, flags, (lvaddr_t *) retaddr);
     } else {
         return vas_vspace_map_one_frame(vas, retaddr, frame, size, flags);
     }
 }
 
-errval_t vas_unmap(vas_handle_t vas, void *addr)
+errval_t vas_unmap(vas_handle_t vh, void *addr)
 {
+    //struct vas *vas = vas_get_vas_pointer(vh);
+
     return VAS_ERR_NOT_SUPPORTED;
 }
 
@@ -327,8 +339,10 @@ errval_t vas_tagging_disable(void)
     return monitor_tlb_tag_toggle(0);
 }
 
-errval_t vas_tagging_tag(vas_id_t id)
+errval_t vas_tagging_tag(vas_handle_t vh)
 {
+    //struct vas *vas = vas_get_vas_pointer(vh);
+
     return VAS_ERR_NOT_SUPPORTED;
 }
 

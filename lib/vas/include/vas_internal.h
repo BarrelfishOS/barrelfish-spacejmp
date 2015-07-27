@@ -15,7 +15,15 @@
 #include <vas/vas.h>
 #include <vas_debug.h>
 
+static inline struct vas *vas_get_vas_pointer(vas_handle_t vashandle)
+{
+    return (struct vas *)vashandle;
+}
 
+static inline vas_handle_t vas_get_handle(struct vas* vas)
+{
+    return (vas_handle_t)vas;
+}
 
 ///< internal representation of the VAS
 struct vas
@@ -23,8 +31,8 @@ struct vas
     vas_id_t id;                        ///< the vas id
     uint16_t tag;                       ///< tag for the vas
     vas_state_t state;                  ///< the state of the vas
-    vas_perm_t perms;                   ///< associated permissions
-    char name[VAS_ID_MAX_LEN];          ///< name of the vas
+    vas_flags_t perms;                  ///< associated permissions
+    char name[VAS_NAME_MAX_LEN];        ///< name of the vas
     struct vspace_state vspace_state;   ///< vspace state
     struct capref pagecn_cap;           ///< cap of the page cn
     struct cnoderef pagecn;             ///< pagecn cap

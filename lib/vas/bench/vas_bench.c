@@ -116,12 +116,12 @@ static uint64_t micro_benchmarks(void) {
 
     {
         struct capref frame;
-        r = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
+        r = frame_alloc(&frame, LARGE_PAGE_SIZE, NULL);
         assert(err_is_ok(r));
         cycles_t start = bench_tsc();
         for (size_t iter=0; iter<ITERATIONS; iter++) {
             void *addr;
-            vas_map(vas[iter], &addr, frame, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
+            vas_map(vas[0], &addr, frame, LARGE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
         }
         cycles_t end = bench_tsc();
         printf("vas_map: %llu cycles (avg)\n", (end - start) / ITERATIONS);
@@ -134,7 +134,7 @@ static uint64_t micro_benchmarks(void) {
         for (size_t iter=0; iter<ITERATIONS; iter++) {
 
             CHECK(r, "switch in", vas_switch(vas[iter]));
-            CHECK(r, "switch back", vas_switch(NULL));
+            CHECK(r, "switch back", vas_switch(VAS_HANDLE_PROCESS));
         }
         cycles_t end = bench_tsc();
         printf("vas_switch: %llu cycles (avg)\n", (end - start) / ITERATIONS / 2);

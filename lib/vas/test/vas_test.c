@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
 
     debug_printf("[%lu] ### creating VAS\n", proc_id);
 
-    err = vas_create(name, VAS_PERM_WRITE, &vas[proc_id]);
+    err = vas_create(name, VAS_FLAGS_PERM_WRITE, &vas[proc_id]);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to create a new VAS");
     }
@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
     }
 
     debug_printf("switching back go original address space\n");
-    err = vas_switch(NULL);
+    err = vas_switch(VAS_HANDLE_PROCESS);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to switch to original");
     }
@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
 
 
     for (size_t i = 0; i < proc_total; ++i) {
-        debug_printf("proc[%lu] vas[%lu]: switch to vas %p\n", proc_id, i, vas[i]);
+        debug_printf("proc[%lu] vas[%lu]: switch to vas %lx\n", proc_id, i, vas[i]);
         err = vas_switch(vas[i]);
         if (err_is_fail(err)) {
             USER_PANIC_ERR(err, "failed to attach");
@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
         debug_printf("proc[%lu] vas[%lu]: [%p] *data = %016lx\n", proc_id, i, data, *data);
     }
 
-    err = vas_switch(NULL);
+    err = vas_switch(VAS_HANDLE_PROCESS);
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to switch to original");
     }

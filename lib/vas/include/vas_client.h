@@ -17,7 +17,7 @@ union vas_name_arg {
 
 errval_t vas_client_connect(void);
 
-errval_t vas_client_vas_create(char *name, vas_perm_t perms, vas_id_t *id);
+errval_t vas_client_vas_create(char *name, vas_flags_t perms, vas_id_t *id);
 
 errval_t vas_client_vas_lookup(char *name, vas_id_t *id);
 
@@ -26,9 +26,9 @@ errval_t vas_client_vas_attach(vas_id_t id, struct capref vroot);
 errval_t vas_client_vas_detach(vas_id_t id);
 
 errval_t vas_client_seg_map(vas_id_t id, struct capref frame, size_t size,
-                            vregion_flags_t flags, lvaddr_t *ret_vaddr);
+                            vas_flags_t flags, lvaddr_t *ret_vaddr);
 errval_t vas_client_seg_map_fixed(vas_id_t id, lvaddr_t vaddr, struct capref frame,
-                                  size_t size, vregion_flags_t flags);
+                                  size_t size, vas_flags_t flags);
 errval_t vas_client_seg_unmap(vas_id_t id, lvaddr_t vaddr);
 
 #endif /* __VAS_CLIENT_H_ */

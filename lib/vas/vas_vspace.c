@@ -187,13 +187,15 @@ errval_t vas_vspace_init(struct vas *vas)
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
                                   struct capref frame, size_t size,
-                                  vregion_flags_t flags)
+                                  vas_flags_t flags)
 {
     VAS_DEBUG_VSPACE("mapping new frame in vas %s\n", vas->name);
 
     errval_t err;
     struct vregion *vregion = NULL;
     struct memobj *memobj = NULL;
+
+    flags &= VREGION_FLAGS_MASK;
 
     size_t alignment;
     if (flags & VREGION_FLAGS_HUGE) {
@@ -260,13 +262,15 @@ errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
 
 errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
                                   struct capref frame, size_t size,
-                                  vregion_flags_t flags)
+                                  vas_flags_t flags)
 {
     VAS_DEBUG_VSPACE("mapping new frame in vas %s\n", vas->name);
 
     errval_t err;
     struct vregion *vregion = NULL;
     struct memobj *memobj = NULL;
+
+    flags &= VREGION_FLAGS_MASK;
 
     if (flags & VREGION_FLAGS_HUGE) {
         size = ROUND_UP(size, HUGE_PAGE_SIZE);

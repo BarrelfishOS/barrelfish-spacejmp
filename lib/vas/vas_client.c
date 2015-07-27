@@ -381,7 +381,7 @@ errval_t vas_client_connect(void)
  */
 
 
-errval_t vas_client_vas_create(char *name, vas_perm_t perms, vas_id_t *id)
+errval_t vas_client_vas_create(char *name, vas_flags_t perms, vas_id_t *id)
 {
     if (vas_service_client == NULL) {
         return VAS_ERR_SERVICE_NOT_ENABLED;
@@ -401,7 +401,7 @@ errval_t vas_client_vas_create(char *name, vas_perm_t perms, vas_id_t *id)
     mst->mst.send = vas_create_call_tx;
 
     size_t len = strlen(name);
-    assert(len < VAS_ID_MAX_LEN);
+    assert(len < VAS_NAME_MAX_LEN);
 
     strncpy(mst->create.n.namestring, name, 31);
 

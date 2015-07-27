@@ -21,37 +21,39 @@
 ///< name of the vas coordinator service
 #define VAS_SERVICE_NAME "vas"
 
-///< forward declaration of struct vas
-struct vas;
-
-///< typedef ot the vas handle
-typedef struct vas *vas_handle_t;
+///<Maximum length of a VAS and segment identifier string.
+#define VAS_NAME_MAX_LEN  32
 
 ///< virtual address space identifier
 typedef uint64_t vas_id_t;
 
-///< segment identifier
-typedef uint64_t vas_seg_id_t;
+///< Identifier for a currently attached VAS inside a process
+typedef uintptr_t vas_handle_t;
 
+#define VAS_HANDLE_PROCESS 0
+
+///< state of the virtual address space
 typedef enum vas_state {
-    VAS_STATE_INVALID = 0,
-    VAS_STATE_DESTROYED = 1,
-    VAS_STATE_DESTROYING = 2,
-    VAS_STATE_DETACHED = 3,
-    VAS_STATE_DETACHING = 4,
-    VAS_STATE_ATTACHED = 5,
-    VAS_STATE_ACTIVE = 6
+    VAS_STATE_INVALID = 0,      ///< the VAS is invalid
+    VAS_STATE_DESTROIED = 1,    ///< the vas has been destroyed
+    VAS_STATE_DESTROYING = 2,   ///< the vas in the process of being destroyed
+    VAS_STATE_DETACHED = 3,     ///< vas is not attached to the calling process
+    VAS_STATE_DETACHING = 4,    ///< the vas is being detached
+    VAS_STATE_ATTACHED = 5,     ///< the vas is attached to the process
+    VAS_STATE_ACTIVE = 6        ///< the vas is currently active
 } vas_state_t;
 
-///< identifier for a currently attached VAS inside a process
 
 ///< permissions associated with a virtual address space
-typedef uint32_t vas_perm_t;
-#define VAS_PERM_READ       (1 << 0)
-#define VAS_PERM_WRITE      (1 << 1)
-#define VAS_PERM_ALLOC      (1 << 2)
-#define VAS_PERM_EXEC       (1 << 3)
-#define VAS_PERM_LOCAL      (1 << 4)
+typedef uint32_t vas_flags_t;
+#define VAS_FLAGS_PERM_READ       VREGION_FLAGS_READ
+#define VAS_FLAGS_PERM_WRITE      VREGION_FLAGS_WRITE
+#define VAS_FLAGS_PERM_EXEC       VREGION_FLAGS_EXECUTE
+#define VAS_FLAGS_MAP_HUGE        VREGION_FLAGS_HUGE
+#define VAS_FLAGS_MAP_LARGE       VREGION_FLAGS_LARGE
+#define VAS_FLAGS_PERM_ALLOC      (1 << 9)
+#define VAS_FLAGS_PERM_LOCAL      (1 << 10)
+
 
 ///< Lifetime of an address space
 typedef enum vas_life_t {
@@ -59,115 +61,49 @@ typedef enum vas_life_t {
     VAS_LIFE_PERSISTENT = 1     ///< VAS lives independent of processes
 } vas_life_t;
 
-///<Maximum length of a VAS and segment identifier string.
-#define VAS_ID_MAX_LEN  32
-
-/**
- * Represents the value of vaddr to seg_alloc which indicates the
- * kernel should / pick the offset to use. It is an addresss 'too
- * large' to use as a valid value anyway.
- */
-#define VAS_SEG_VADDR_MAX   (0UL-1)
-
-///< maximum length of a segment
-#define VAS_SEG_MAX_LEN (1UL<<40)
-
-
-/**
- * Information pertaining to a segment, returned by the kernel.
- */
-struct vas_seg_info
-{
-    char name[VAS_ID_MAX_LEN];
-    lvaddr_t vaddr;
-    size_t len;
-    vas_seg_id_t id;
-};
-
 
 /*
  * ==============================================================================
  * Public interface
  * ==============================================================================
  */
+
 errval_t vas_enable(void);
-errval_t vas_create(const char* name, vas_perm_t perm, vas_handle_t *ret_vas);
-errval_t vas_delete(vas_handle_t id);
-
-
+///> directly create a vas handle
+errval_t vas_create(const char* name, vas_flags_t flags, vas_handle_t *ret_vas);
+///> directly use a vas handle
+errval_t vas_delete(vas_handle_t vas);
+///> directly retrn a vas handle
 errval_t vas_lookup(const char* name, vas_handle_t *ret_vas);
+vas_handle_t vas_get_current(void);
 
-errval_t vas_get_perm(vas_id_t id, vas_perm_t* perm);
-errval_t vas_set_perm(vas_id_t id, vas_perm_t perm);
-errval_t vas_get_life(vas_id_t id, vas_life_t* life);
-errval_t vas_set_life(vas_id_t id, vas_life_t lifetime);
+errval_t vas_get_perm(vas_handle_t id, vas_flags_t* perm);
+errval_t vas_set_perm(vas_handle_t id, vas_flags_t perm);
+errval_t vas_get_life(vas_handle_t id, vas_life_t* life);
+errval_t vas_set_life(vas_handle_t id, vas_life_t lifetime);
 
-vas_state_t vas_get_state(struct vas *vas);
-
-errval_t vas_attach(vas_handle_t vas, vas_perm_t perm);
+errval_t vas_attach(vas_handle_t vas, vas_flags_t flags);
 errval_t vas_detach(vas_handle_t vas);
 errval_t vas_switch(vas_handle_t vas);
 errval_t vas_switchm(vas_handle_t vas, vas_handle_t *prev_id);
 
+vas_state_t vas_get_state(vas_handle_t vas);
+vas_id_t vas_get_id(vas_handle_t vas);
+
 void* vas_get_root(char* root_name);
 errval_t vas_set_root(char* root_name, void* value);
-errval_t vas_share(vas_id_t id, unsigned user_id, vas_perm_t perm);
-vas_id_t vas_get_current(void);
+errval_t vas_share(vas_handle_t vas, unsigned user_id, vas_flags_t flags);
 
 errval_t vas_tagging_enable(void);
 errval_t vas_tagging_disable(void);
-errval_t vas_tagging_tag(vas_id_t id);
+errval_t vas_tagging_tag(vas_handle_t vas);
 
 /*
  *
  */
-
 errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t size,
                  vregion_flags_t flags);
 errval_t vas_unmap(vas_handle_t vas, void *addr);
 
-
-
-#if 0
-
-static inline long
-__seg_alloc(const char *seg_name, ulong vaddr, size_t len, sid_t *sid)
-{
-    return ((long)__syscall((quad_t)SYS_seg_alloc,
-                seg_name, vaddr, len, sid));
-}
-
-static inline long
-__seg_free(sid_t sid)
-{
-    return ((long)__syscall((quad_t)SYS_seg_free, sid));
-}
-
-static inline long
-__seg_map(sid_t sid, ulong *vaddr, int prot)
-{
-    return ((long)__syscall((quad_t)SYS_seg_map,
-                sid, vaddr, prot));
-}
-
-static inline long
-__seg_attach(sid_t sid, vid_t vid)
-{
-    return ((long)__syscall((quad_t)SYS_seg_attach, sid, vid));
-}
-
-static inline long
-__vas_create(const char *name, vid_t *vid)
-{
-    return ((long)__syscall((quad_t)SYS_vas_create, name, vid));
-}
-
-static inline long
-__vas_ctl(vid_t vid, int cmd)
-{
-    return ((long)__syscall((quad_t)SYS_vas_ctl, vid, cmd));
-}
-
-#endif
 
 #endif /* __LIBVAS_H */
