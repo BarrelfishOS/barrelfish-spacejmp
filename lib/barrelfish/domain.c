@@ -1226,6 +1226,7 @@ struct pmap *get_current_pmap(void)
     return (struct pmap*)&disp->core_state.vspace_state.pmap;
 }
 
+
 /**
  * \brief Returns a pointer to the morecore state on the dispatcher priv
  */
@@ -1385,4 +1386,18 @@ struct slot_alloc_state *get_slot_alloc_state(void)
     dispatcher_handle_t handle = curdispatcher();
     struct dispatcher_generic* disp = get_dispatcher_generic(handle);
     return &disp->core_state.c.slot_alloc_state;
+}
+
+/* mvas extension */
+void *disp_get_current_vas(void)
+{
+    dispatcher_handle_t handle = curdispatcher();
+    struct dispatcher_generic* disp = get_dispatcher_generic(handle);
+    return disp->mvas;
+}
+void disp_set_current_vas(void *mvas)
+{
+    dispatcher_handle_t handle = curdispatcher();
+    struct dispatcher_generic* disp = get_dispatcher_generic(handle);
+    disp->mvas = mvas;
 }

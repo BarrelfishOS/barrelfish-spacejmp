@@ -84,6 +84,8 @@ struct dispatcher_generic {
 
     /// size of the eh frame
     size_t   eh_frame_hdr_size;
+
+    void * mvas;
 };
 
 #endif // BARRELFISH_DISPATCHER_H

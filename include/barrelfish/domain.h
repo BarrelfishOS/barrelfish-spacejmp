@@ -83,6 +83,10 @@ errval_t domain_wakeup_on_disabled(dispatcher_handle_t disp,
                                    dispatcher_handle_t mydisp);
 errval_t domain_thread_move_to(struct thread *thread, coreid_t core_id);
 
+/* mvas extension */
+void *disp_get_current_vas(void);
+void disp_set_current_vas(void *);
+
 __END_DECLS
 
 #endif
