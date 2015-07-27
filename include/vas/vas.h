@@ -27,6 +27,8 @@
 ///< virtual address space identifier
 typedef uint64_t vas_id_t;
 
+#define VAS_ID_PROCESS 0xcafebabecafebabe
+
 ///< Identifier for a currently attached VAS inside a process
 typedef uintptr_t vas_handle_t;
 

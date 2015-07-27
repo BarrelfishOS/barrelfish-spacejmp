@@ -18,6 +18,8 @@
 #include <vas_vspace.h>
 #include <vas_client.h>
 
+static struct vas vas_process;
+
 /**
  * \brief enables the support for multiple virtual address spaces on this dispatcher
  *
@@ -27,6 +29,15 @@
 errval_t vas_enable(void)
 {
     VAS_DEBUG_LIBVAS("enabling mvas support for domain.\n");
+
+    assert(vas_process.id == 0);
+
+    vas_process.id = VAS_ID_PROCESS;
+    vas_process.vroot = (struct capref){.cnode = cnode_page,.slot = 0};
+    vas_process.state = VAS_STATE_ACTIVE;
+    vas_process.tag = 0;
+
+    disp_set_current_vas(&vas_process);
 
     return vas_client_connect();
 }
@@ -242,6 +253,25 @@ errval_t vas_detach(vas_handle_t vh)
     return VAS_ERR_NOT_SUPPORTED;
 }
 
+static inline errval_t vas_do_switch(struct vas *vas)
+{
+    VAS_DEBUG_LIBVAS("switching to vas '%s'\n", vas->name);
+
+    errval_t err;
+
+    err = vnode_vroot_switch(vas->vroot, vas->tag);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    disp_set_current_vas(vas);
+    vas->state = VAS_STATE_ACTIVE;
+
+    VAS_DEBUG_LIBVAS("switched to vas '%s'\n", vas->name);
+
+    return SYS_ERR_OK;
+}
+
 /**
  * \brief Switch to the address space.
  *
@@ -252,31 +282,22 @@ errval_t vas_detach(vas_handle_t vh)
  */
 errval_t vas_switch(vas_handle_t vh)
 {
-    VAS_DEBUG_LIBVAS("switching to vas '%s'\n", vas->name);
-
     struct vas *vas = vas_get_vas_pointer(vh);
+    struct vas *currvas = disp_get_current_vas();
+
+    assert(vas && currvas);
 
     errval_t err;
 
-    if (vas) {
-        if (vas->state != VAS_STATE_ATTACHED) {
-            return VAS_ERR_SWITCH_NOT_ATTACHED;
-        }
-        err = vnode_vroot_switch(vas->vroot, vas->tag);
-    } else {
-        struct capref vroot = {
-            .cnode = cnode_page,
-            .slot = 0
-        };
-        err = vnode_vroot_switch(vroot, 0);
+    if (vas->state != VAS_STATE_ATTACHED) {
+        return VAS_ERR_SWITCH_NOT_ATTACHED;
     }
+    err = vas_do_switch(vas);
     if (err_is_fail(err)) {
         return err;
     }
+    currvas->state = VAS_STATE_ATTACHED;
 
-   // vas->state = VAS_STATE_ACTIVE;
-
-    VAS_DEBUG_LIBVAS("switched to vas '%s'\n", vas->name);
 
     return SYS_ERR_OK;
 }
@@ -290,10 +311,29 @@ errval_t vas_switch(vas_handle_t vh)
  *
  * \return
  */
-errval_t vas_switchm(vas_handle_t vh, vas_handle_t *rev_vas)
+errval_t vas_switchm(vas_handle_t vh, vas_handle_t *ret_vas)
 {
-    //struct vas *vas = vas_get_vas_pointer(vh);
-    return VAS_ERR_NOT_SUPPORTED;
+    struct vas *vas = vas_get_vas_pointer(vh);
+    struct vas *currvas = disp_get_current_vas();
+
+    assert(vas && currvas);
+
+    errval_t err;
+
+    if (vas->state != VAS_STATE_ATTACHED) {
+        return VAS_ERR_SWITCH_NOT_ATTACHED;
+    }
+    err = vas_do_switch(vas);
+    if (err_is_fail(err)) {
+        return err;
+    }
+    currvas->state = VAS_STATE_ATTACHED;
+
+    if (ret_vas) {
+        *ret_vas = vas_get_handle(currvas);
+    }
+
+    return SYS_ERR_OK;
 }
 
 
