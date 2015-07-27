@@ -12,6 +12,8 @@ interface bench "The bench Interface" {
 
 	message init_request(uint8 coreid);
 	message init_reply();
+	
+	rpc get(in uint64 key, out char val[size]);
 
 	message token_request();
 	message token_reply();

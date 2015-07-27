@@ -69,7 +69,6 @@ static uint64_t micro_benchmarks(void) {
     vas_handle_t vas[ITERATIONS];
     errval_t r;
 
-    vas_enable();
     vas_tagging_enable();
 
 
@@ -171,15 +170,19 @@ static uint64_t micro_benchmarks(void) {
 #endif
     //CHECK(r, "disable tags", vas_tagging_disable());
 
+
+
     return 0;
 
 }
-
 
 int main(int argc, char *argv[])
 {
 
     bench_init();
+
+    vas_enable();
+
 
     micro_benchmarks();
 
