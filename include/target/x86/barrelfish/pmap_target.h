@@ -40,15 +40,16 @@ struct pmap_x86 {
     struct pmap p;
     struct vregion vregion;     ///< Vregion used to reserve virtual address for metadata
     genvaddr_t vregion_offset;  ///< Offset into amount of reserved virtual address used
+    struct vnode  *cache_ptable;
+    struct vnode  *cache_pdir;
+    struct vnode  *cache_pdpt;
     struct vnode root;          ///< Root of the vnode tree
     errval_t (*refill_slabs)(struct pmap_x86 *); ///< Function to refill slabs
     struct slab_allocator slab;     ///< Slab allocator for the vnode lists
     genvaddr_t min_mappable_va; ///< Minimum mappable virtual address
     genvaddr_t max_mappable_va; ///< Maximum mappable virtual address
     uint8_t slab_buffer[512];   ///< Initial buffer to back the allocator
-    struct vnode  *cache_ptable;
-    struct vnode  *cache_pdir;
-    struct vnode  *cache_pdpt;
+
 };
 
 #endif // TARGET_X86_BARRELFISH_PMAP_H

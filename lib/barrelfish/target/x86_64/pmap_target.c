@@ -1138,6 +1138,10 @@ errval_t pmap_x86_64_init(struct pmap *pmap, struct vspace *vspace,
     pmap->f = pmap_funcs;
     pmap->vspace = vspace;
 
+    x86->cache_ptable = NULL;
+    x86->cache_pdir = NULL;
+    x86->cache_pdpt = NULL;
+
     if (opt_slot_alloc != NULL) {
         pmap->slot_alloc = opt_slot_alloc;
     } else { /* use default allocator for this dispatcher */

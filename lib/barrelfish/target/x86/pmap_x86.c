@@ -80,8 +80,9 @@ static errval_t vnode_alloc_cached(struct pmap_x86 *pmap, enum objtype type,
     }
 
     /* check if we have a cached vnode and return this */
-    struct vnode *newvnode = *cache;
-    if (newvnode) {
+    struct vnode *newvnode = NULL;
+    if (cache && *cache) {
+        newvnode = *cache;
         *cache = newvnode->next;
         *retvnode = newvnode;
         return SYS_ERR_OK;
@@ -301,8 +302,10 @@ errval_t alloc_vnode(struct pmap_x86 *pmap, struct vnode *root,
     struct vnode *newvnode = NULL;
     err = vnode_alloc_cached(pmap, type, &newvnode);
     if (err_is_fail(err)) {
-        return err_push(err, SYS_ERR_OK);
+        return err_push(err, LIB_ERR_VNODE_CREATE);
     }
+
+    assert(newvnode);
 
     // Map it
     err = vnode_map(root->u.vnode.cap, newvnode->u.vnode.cap, entry,
@@ -569,7 +572,7 @@ errval_t pmap_x86_determine_addr(struct pmap *pmap, struct memobj *memobj,
     vaddr = ROUND_UP((vregion_get_base_addr(walk)
                       + ROUND_UP(vregion_get_size(walk), BASE_PAGE_SIZE)),
                      alignment);
- 
+
  out:
     // Ensure that we haven't run out of address space
     if (vaddr + memobj->size > pmapx->max_mappable_va) {
