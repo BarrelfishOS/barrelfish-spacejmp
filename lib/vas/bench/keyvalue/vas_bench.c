@@ -15,12 +15,18 @@
 #include <vas/vas.h>
 #include <bench/bench.h>
 
-#define ITERATIONS 256ULL
 
+#define MAX_COUNT 1000
+#define DRYRUNS 32
+#define EXPECT_SUCCESS(err, str) \
+    if (err_is_fail(err)) {USER_PANIC_ERR(err, str);}
+
+#define EXPECT_NONNULL(expr, str) \
+    if (!expr) {USER_PANIC(str);}
 
 static uint64_t request_benchmark(void)
 {
-    errval_t err;
+    errval_t err, err2;
     vas_handle_t vas;
 
     struct capref frame;
@@ -51,68 +57,58 @@ static uint64_t request_benchmark(void)
     printf("get requests\n");
     vas_handle_t prev;
 
-    cycles_t start = bench_tsc();
-    for (int i = 0; i < ITERATIONS; ++i) {
-        err = vas_switchm(vas, &prev);
-        *((uint32_t *)buf) = *((uint32_t *)addr);
-        err = vas_switch(prev);
-    }
-    cycles_t end = bench_tsc();
 
-    printf("get(4): %llu cycles (avg)\n", (end - start) / ITERATIONS);
+    for (int sz = 4; sz <= LARGE_PAGE_SIZE; sz <<=1) {
+        cycles_t t_elapsed;
 
-    start = bench_tsc();
-    for (int i = 0; i < ITERATIONS; ++i) {
-        err = vas_switchm(vas, &prev);
-        *((uint64_t *)buf) = *((uint64_t *)addr);
-        err = vas_switch(prev);
-    }
-    end = bench_tsc();
-
-    printf("get(8): %llu cycles (avg)\n", (end - start) / ITERATIONS);
-
-    for (int sz = 16; sz <= LARGE_PAGE_SIZE; sz <<=1) {
-        start = bench_tsc();
-        for (int i = 0; i < ITERATIONS; ++i) {
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, MAX_COUNT);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
+            cycles_t t_start = bench_tsc();
             err = vas_switchm(vas, &prev);
             memcpy(buf, addr, sz);
-            err = vas_switch(prev);
-        }
-        end = bench_tsc();
-        printf("get(%u): %llu cycles (avg)\n", sz, (end - start) / ITERATIONS);
+            err2 = vas_switch(prev);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(err, "vas_switchm");
+            EXPECT_SUCCESS(err2, "vas_switchm");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        char label[32];
+        snprintf(label, 32, "get_mvas(%u)", sz);
+
+        bench_ctl_dump_analysis(bench_ctl, 0, label, bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
     err = vas_tagging_enable();
 
-    start = bench_tsc();
-    for (int i = 0; i < ITERATIONS; ++i) {
-        err = vas_switchm(vas, &prev);
-        *((uint32_t *)buf) = *((uint32_t *)addr);
-        err = vas_switch(prev);
-    }
-    end = bench_tsc();
 
-    printf("tag get(4): %llu cycles (avg)\n", (end - start) / ITERATIONS);
 
-    start = bench_tsc();
-    for (int i = 0; i < ITERATIONS; ++i) {
-        err = vas_switchm(vas, &prev);
-        *((uint64_t *)buf) = *((uint64_t *)addr);
-        err = vas_switch(prev);
-    }
-    end = bench_tsc();
+    for (int sz = 4; sz <= LARGE_PAGE_SIZE; sz <<=1) {
+        cycles_t t_elapsed;
 
-    printf("tag get(8): %llu cycles (avg)\n", (end - start) / ITERATIONS);
 
-    for (int sz = 16; sz <= LARGE_PAGE_SIZE; sz <<=1) {
-        start = bench_tsc();
-        for (int i = 0; i < ITERATIONS; ++i) {
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, MAX_COUNT);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
+            cycles_t t_start = bench_tsc();
             err = vas_switchm(vas, &prev);
             memcpy(buf, addr, sz);
-            err = vas_switch(prev);
-        }
-        end = bench_tsc();
-        printf("tag get(%u): %llu cycles (avg)\n", sz, (end - start) / ITERATIONS);
+            err2 = vas_switch(prev);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(err, "vas_switchm");
+            EXPECT_SUCCESS(err2, "vas_switchm");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        char label[32];
+        snprintf(label, 32, "get_mvas_tag(%u)", sz);
+
+        bench_ctl_dump_analysis(bench_ctl, 0, label, bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
     return 0;

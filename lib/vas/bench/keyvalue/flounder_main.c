@@ -23,6 +23,14 @@
 
 
 #define MAX_COUNT 1000
+#define DRYRUNS 32
+
+
+#define EXPECT_SUCCESS(err, str) \
+    if (err_is_fail(err)) {USER_PANIC_ERR(err, str);}
+
+#define EXPECT_NONNULL(expr, str) \
+    if (!expr) {USER_PANIC(str);}
 
 static struct timestamps *timestamps;
 
@@ -57,25 +65,29 @@ static void bind_cb(void *st, errval_t binderr, struct bench_binding *b)
 
     timestamps = malloc(sizeof(struct timestamps) * MAX_COUNT);
 
-
     for (int sz = 4; sz <= LARGE_PAGE_SIZE; sz <<= 1) {
-        for (int i = 0; i < MAX_COUNT; i++) {
-            timestamps[i].time0 = bench_tsc();
+
+        cycles_t t_elapsed;
+
+
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, MAX_COUNT);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
+            cycles_t t_start = bench_tsc();
             uint64_t length;
             void *inbuf;
             rpc_b.vtbl.get(&rpc_b, sz, (char **)&inbuf, &length);
-            timestamps[i].time1 = bench_tsc();
             free(inbuf);
-        }
-        cycles_t elapsed = 0;
-        uint32_t count = 0;
-        for (int i = MAX_COUNT / 10; i < MAX_COUNT; i++) {
-            if (timestamps[i].time1 > timestamps[i].time0) {
-                elapsed += timestamps[i].time1 - timestamps[i].time0;
-                count++;
-            }
-        }
-        printf("get(%i): %" PRIuCYCLES" cycles (avg)\n", sz, elapsed / count);
+            cycles_t t_end = bench_tsc();
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        char label[32];
+        snprintf(label, 32, "get_fl_lmp(%u)", sz);
+
+        bench_ctl_dump_analysis(bench_ctl, 0, label, bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
     printf("done.\n");
@@ -133,7 +145,7 @@ int main(int argc, char *argv[])
         char *xargv[] = {"benchmarks/kv_fl_lat", "dummy", NULL};
         //err = spawn_program_on_all_cores(false, xargv[0], xargv, NULL,
         //                                 SPAWN_FLAGS_DEFAULT, NULL, &num_cores);
-        err = spawn_program(my_core_id + 2, xargv[0], xargv, NULL,0, NULL);
+        err = spawn_program(my_core_id, xargv[0], xargv, NULL,0, NULL);
 
         assert(err_is_ok(err));
 

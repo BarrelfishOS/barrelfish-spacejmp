@@ -14,23 +14,39 @@
 
 #include <barrelfish/barrelfish.h>
 #include <barrelfish/ump_impl.h>
-
+#include <bench/bench.h>
 #include "ump_bench.h"
 
-#define MAX_COUNT 1000
+#define MAX_COUNT 1024
+#define DRYRUNS 32
+
 static struct timestamps *timestamps;
+
+#define EXPECT_SUCCESS(err, str) \
+    if (err_is_fail(err)) {USER_PANIC_ERR(err, str);}
+
+#define EXPECT_NONNULL(expr, str) \
+    if (!expr) {USER_PANIC(str);}
 
 static void *buf;
 
 static void run(struct ump_chan_state *send, struct ump_chan_state *recv,
                 uint64_t msglen) {
 
-    for (int i = 0; i < MAX_COUNT; i++) {
+    cycles_t t_elapsed;
+
+
+    bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, MAX_COUNT);
+    EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+    bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+    do {
+
         uint64_t received = 0;
         void *buf_run = buf;
         volatile struct ump_message *msg;
         struct ump_control ctrl;
-        timestamps[i].time0 = bench_tsc();
+
+        cycles_t t_start = bench_tsc();
         msg = ump_impl_get_next(send, &ctrl);
         msg->data[0] = msglen;
         msg->header.control = ctrl;
@@ -43,9 +59,15 @@ static void run(struct ump_chan_state *send, struct ump_chan_state *recv,
             }
             received += UMP_MSG_BYTES;
         }
+        cycles_t t_end = bench_tsc();
+        t_elapsed = bench_time_diff(t_start, t_end);
+    } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
 
-        timestamps[i].time1 = bench_tsc();
-    }
+    char label[32];
+    snprintf(label, 32, "get_ump(%lu)", msglen);
+
+    bench_ctl_dump_analysis(bench_ctl, 0, label, bench_tsc_per_us());
+    bench_ctl_destroy(bench_ctl);
 }
 
 void experiment(coreid_t idx)
@@ -67,16 +89,6 @@ void experiment(coreid_t idx)
     /* Run experiment */
     for (int sz = 4; sz <= LARGE_PAGE_SIZE; sz <<= 1) {
         run(send, recv, sz);
-        cycles_t elapsed = 0;
-        uint32_t count = 0;
-        for (int i = MAX_COUNT / 10; i < MAX_COUNT; i++) {
-            if (timestamps[i].time1 > timestamps[i].time0) {
-                elapsed += timestamps[i].time1 - timestamps[i].time0;
-                count++;
-            }
-        }
-
-        printf("get(%i): %" PRIuCYCLES" cycles (avg)\n", sz, elapsed / count);
     }
     free(buf);
 
