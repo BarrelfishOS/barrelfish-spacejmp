@@ -489,4 +489,9 @@ static inline errval_t invoke_vnode_vroot_switch(struct capref dest, uint16_t ta
     return cap_invoke2(dest, VNodeCmd_Switch, tag).error;
 }
 
+static inline errval_t invoke_cap_nop(struct capref cap, uint64_t arg)
+{
+    return cap_invoke2(cap, 0xffff, arg).error;
+}
+
 #endif
