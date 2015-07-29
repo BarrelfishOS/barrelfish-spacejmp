@@ -23,8 +23,15 @@
         } \
     } while (0)
 
+#define EXPECT_SUCCESS(err, str) \
+    if (err_is_fail(err)) {USER_PANIC_ERR(err, str);}
+
+#define EXPECT_NONNULL(expr, str) \
+    if (!expr) {USER_PANIC(str);}
+
 //#define ITERATIONS 256ULL
-#define ITERATIONS 32ULL
+#define ITERATIONS 256ULL
+#define DRYRUNS 5
 
 #if 0
 static void shuffle(size_t *array, size_t n) {
@@ -42,122 +49,171 @@ static void shuffle(size_t *array, size_t n) {
 }
 #endif
 
-static char *randstring(size_t length) {
-
-    static char charset[] = "abcdefghijklmnopqrstuvwxyz";
-    char *randomString = NULL;
-
-    if (length) {
-        randomString = malloc(sizeof(char) * (length +1));
-
-        if (randomString) {
-            for (size_t n = 0; n < length; n++) {
-                size_t key = rand() % (sizeof(charset) -1);
-                randomString[n] = charset[key];
-            }
-
-            randomString[length] = '\0';
-        }
-    }
-
-    return randomString;
-}
-
 
 static uint64_t micro_benchmarks(void) {
 
     vas_handle_t vas[ITERATIONS];
     errval_t r;
 
-    vas_tagging_enable();
 
 
-    static cycles_t overhead = 0;
-    //// Loop overhead:
+    cycles_t t_elapsed;
+
     {
-        cycles_t start = bench_tsc();
-        for (size_t iter=0; iter<ITERATIONS; iter++) {randstring(0);}
-        cycles_t end = bench_tsc();
-        overhead = (end - start) / ITERATIONS;
-        printf("Loop overhead is = %lu\n", overhead);
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
+
+            cycles_t t_start = bench_tsc();
+            r = vas_bench_cap_invoke_nop(VAS_HANDLE_PROCESS);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "cap_invoke", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
 
-    /// Context switch (i.e. flush TLB) before access
     {
-        char random_strings[ITERATIONS][10];
-        for (size_t iter=0; iter<ITERATIONS; iter++) {
-            char* str = randstring(7);
-            strncpy(random_strings[iter], str, 10);
-            free(str);
-            //printf("%s:%s:%d: random_strings[iter] = %s\n",
-            //       __FILE__, __FUNCTION__, __LINE__, random_strings[iter]);
-        }
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        int iter = 0;
+        do {
+            char str[10];
+            snprintf(str, 10, "/vas/%u", iter);
 
-        cycles_t start = bench_tsc();
-        for (size_t iter=0; iter<ITERATIONS; iter++) {
-            r = vas_create(random_strings[iter], 0, &vas[iter]);
-            assert(err_is_ok(r));
-        }
-        cycles_t end = bench_tsc();
-        printf("create_vas: %llu cycles (avg)\n", (end - start) / ITERATIONS);
+            cycles_t t_start = bench_tsc();
+            r = vas_create(str, 0, &vas[iter++]);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_create", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
+
     {
-        cycles_t start = bench_tsc();
-        for (size_t iter=0; iter<ITERATIONS; iter++) {
-            r = vas_attach(vas[iter], 0);
-            assert(err_is_ok(r));
-        }
-        cycles_t end = bench_tsc();
-        printf("vas_attach: %llu cycles (avg)\n", (end - start) / ITERATIONS);
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        int iter = 0;
+        do {
+            cycles_t t_start = bench_tsc();
+            r = vas_attach(vas[iter++], 0);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_attach", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
+
+
+    {
+        struct capref frame;
+        r = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
+        EXPECT_SUCCESS(r, "frame alloc");
+
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
+            void *addr;
+            cycles_t t_start = bench_tsc();
+            r = vas_map(vas[0], &addr, frame, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "mapping in  vas");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_map", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
+    }
+
 
     {
         struct capref frame;
         r = frame_alloc(&frame, LARGE_PAGE_SIZE, NULL);
-        assert(err_is_ok(r));
-        cycles_t start = bench_tsc();
-        for (size_t iter=0; iter<ITERATIONS; iter++) {
+        EXPECT_SUCCESS(r, "frame alloc");
+
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
             void *addr;
-            vas_map(vas[0], &addr, frame, LARGE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
-        }
-        cycles_t end = bench_tsc();
-        printf("vas_map: %llu cycles (avg)\n", (end - start) / ITERATIONS);
+            cycles_t t_start = bench_tsc();
+            r = vas_map(vas[1], &addr, frame, LARGE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE | VREGION_FLAGS_LARGE);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "mapping");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_map_large", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
-    /// Switching:
-    printf("%s:%s:%d: \n", __FILE__, __FUNCTION__, __LINE__);
-    {
-        cycles_t start = bench_tsc();
-        for (size_t iter=0; iter<ITERATIONS; iter++) {
 
-            CHECK(r, "switch in", vas_switch(vas[iter]));
-            CHECK(r, "switch back", vas_switch(VAS_HANDLE_PROCESS));
-        }
-        cycles_t end = bench_tsc();
-        printf("vas_switch: %llu cycles (avg)\n", (end - start) / ITERATIONS / 2);
+    {
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        int iter = 0;
+        cycles_t t_elapsed2[2];
+        do {
+            cycles_t t_start = bench_tsc();
+            r = vas_switch(vas[iter++]);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed2[0] = bench_time_diff(t_start, t_end);
+            t_start = bench_tsc();
+            r = vas_switch(VAS_HANDLE_PROCESS);
+            t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed2[1] = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, t_elapsed2));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_switch(vas)", bench_tsc_per_us());
+        bench_ctl_dump_analysis(bench_ctl, 1, "vas_switch(proc)", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
+    }
+
+
+
+    r = vas_tagging_enable();
+    EXPECT_SUCCESS(r, "tagging enable");
+
+
+    {
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        cycles_t t_elapsed2[2];
+        do {
+            cycles_t t_start = bench_tsc();
+            r = vas_switch(vas[0]);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed2[0] = bench_time_diff(t_start, t_end);
+            t_start = bench_tsc();
+            r = vas_switch(VAS_HANDLE_PROCESS);
+            t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "creating vas");
+            t_elapsed2[1] = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, t_elapsed2));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_tagged_switch(vas)", bench_tsc_per_us());
+        bench_ctl_dump_analysis(bench_ctl, 1, "vas_tagged_switch(proc)", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
     }
 
 
 #if 0
-    /// Swiching with tags:
-    CHECK(r, "enable tagging", vas_tagging_enable());
-    CHECK(r, "tag process", vas_tagging_tag(0));
-    CHECK(r, "tag id1", vas_tagging_tag(id1));
-
-    {
-        cycles_t start = bench_tsc();
-        for (size_t iter=0; iter<ITERATIONS; iter++) {
-
-            CHECK(r, "switch in", vas_switch(id1));
-            CHECK(r, "switch back", vas_switch(0));
-        }
-        cycles_t end = bench_tsc();
-        printf("vas_switch with tags = %llu\n", (end - start) / ITERATIONS / 2);
-    }
-
-
     /// Context switch (i.e. flush TLB) before access
     {
         cycles_t start = bench_tsc();
@@ -170,7 +226,7 @@ static uint64_t micro_benchmarks(void) {
 #endif
     //CHECK(r, "disable tags", vas_tagging_disable());
 
-
+    printf("microbenchmarks done\n");
 
     return 0;
 
