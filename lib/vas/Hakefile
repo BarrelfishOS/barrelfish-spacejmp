@@ -30,7 +30,8 @@
             ],
             flounderBindings = [
                 "vas"
-            ]
+            ],
+            flounderExtraBindings = [ ("vas",["rpcclient"]) ]            
         }
 
  ) | arch <- [ "x86_64" ]

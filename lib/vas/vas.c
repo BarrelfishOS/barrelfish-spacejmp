@@ -35,7 +35,11 @@ errval_t vas_enable(void)
     vas_process.id = VAS_ID_PROCESS;
     vas_process.vroot = (struct capref){.cnode = cnode_page,.slot = 0};
     vas_process.state = VAS_STATE_ACTIVE;
-    vas_process.tag = 0;
+    domainid_t domid = disp_get_domain_id();
+    if (domid < 0x100) {
+        debug_printf("[vas] setting tag of process vas to %u\n", domid);
+        vas_process.tag = domid;
+    }
 
     disp_set_current_vas(&vas_process);
 
@@ -98,7 +102,7 @@ errval_t vas_create(const char* name, vas_flags_t perm, vas_handle_t *ret_vas)
             return err;
         }
 
-        err = vas_client_vas_create(vas->name, perm, &vas->id);
+        err = vas_client_vas_create(vas);
         if (err_is_fail(err)) {
             cap_destroy(vas->vroot);
             slot_free(vas->vroot);
@@ -110,7 +114,6 @@ errval_t vas_create(const char* name, vas_flags_t perm, vas_handle_t *ret_vas)
     /* TODO: register name with the vas service to get the VAS ID */
 
     vas->state = VAS_STATE_DETACHED;
-    vas->tag = (vas->id + 2);
 
     *ret_vas = vas_get_handle(vas);
 
@@ -177,7 +180,7 @@ errval_t vas_lookup(const char *name, vas_handle_t *ret_vas)
         return err;
     }
 
-    err = vas_client_vas_lookup(vas->name, &vas->id);
+    err = vas_client_vas_lookup(vas->name, vas);
     if (err_is_fail(err)) {
         cap_destroy(vas->vroot);
         slot_free(vas->vroot);
@@ -387,3 +390,34 @@ errval_t vas_tagging_tag(vas_handle_t vh)
 }
 
 
+vas_handle_t vas_get_current_handle(void)
+{
+    return vas_get_handle(disp_get_current_vas());
+}
+
+vas_handle_t vas_get_proc_handle(void)
+{
+    return vas_get_handle(&vas_process);
+}
+
+/**
+ * \brief Switch to the address space.
+ *
+ * \param vas   the virtual address space to switch to
+ *
+ * \return SYS_ERR_OK on success
+ *         VAS_ERR_SWITCH_NOT_ATTACHED
+ */
+errval_t vas_bench_cap_invoke_nop(vas_handle_t vh)
+{
+    struct vas *vas = vas_get_vas_pointer(vh);
+
+    errval_t err;
+
+    err = invoke_cap_nop(vas->vroot, vas->tag);
+    if (err_no(err) == SYS_ERR_ILLEGAL_INVOCATION) {
+        return SYS_ERR_OK;
+    }
+
+    return err;
+}

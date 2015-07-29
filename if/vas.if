@@ -14,7 +14,8 @@ interface vas "VAS interface" {
                in uint64 name2,
                in uint64 name4,
                out errval msgerr,
-               out uint64 id);
+               out uint64 id,
+               out uint16 tag);
     
     rpc attach(in uint64 id,
                in cap vroot,
@@ -46,5 +47,6 @@ interface vas "VAS interface" {
                in uint64 name2,
                in uint64 name4,
                out errval msgerr,
-               out uint64 id);
+               out uint64 id, 
+               out uint16 tag);
 };

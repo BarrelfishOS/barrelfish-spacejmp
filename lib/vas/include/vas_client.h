@@ -17,9 +17,9 @@ union vas_name_arg {
 
 errval_t vas_client_connect(void);
 
-errval_t vas_client_vas_create(char *name, vas_flags_t perms, vas_id_t *id);
+errval_t vas_client_vas_create(struct vas *vas);
 
-errval_t vas_client_vas_lookup(char *name, vas_id_t *id);
+errval_t vas_client_vas_lookup(char *name, struct vas *vas);
 
 errval_t vas_client_vas_attach(vas_id_t id, struct capref vroot);
 

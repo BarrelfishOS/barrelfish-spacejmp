@@ -80,6 +80,12 @@ static errval_t vas_vspace_refill_slabs(struct slab_allocator *slabs)
 
 #endif /* VAS_CONFIG_MULTI_DOMAIN_META */
 
+
+#define VAS_VSPACE_TAG_START 0x100
+
+static uint16_t vas_vspace_tag_alloc = VAS_VSPACE_TAG_START;
+
+
 /**
  * \brief initializes the VSPACE structure of the VAS
  *
@@ -173,6 +179,13 @@ errval_t vas_vspace_init(struct vas *vas)
      *  - maybe reserve a region of memory for the vregion/memobjs
      *  - create CNODE for the backing frames?
      */
+
+    if (vas_vspace_tag_alloc < 0x1000) {
+        vas->tag = vas_vspace_tag_alloc++;
+    } else {
+        vas->tag = 0;
+        debug_printf("warning: out of tags for this vas!\n");
+    }
 
 
     VAS_DEBUG_VSPACE("vspace initialized successfully\n");

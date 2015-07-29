@@ -25,6 +25,22 @@ static inline vas_handle_t vas_get_handle(struct vas* vas)
     return (vas_handle_t)vas;
 }
 
+
+#define VAS_ID_MASK 0x0000ffffffffffffUL
+#define VAS_ID_TAG_MASK 0x0fff000000000000UL
+#define VAS_ID_MASK 0x0000ffffffffffffUL
+#define VAS_ID_MARK 0xA000000000000000UL
+
+static inline uint16_t vas_id_extract_tag(vas_id_t id)
+{
+    return (uint16_t)((id >> 48) & 0xfff);
+}
+
+static inline vas_id_t vas_id_insert_tag(vas_id_t id, uint16_t tag)
+{
+    return ((id & ~VAS_ID_TAG_MASK) | (((vas_id_t)tag & 0xfff) << 48));
+}
+
 ///< internal representation of the VAS
 struct vas
 {

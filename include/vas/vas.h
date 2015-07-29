@@ -32,7 +32,7 @@ typedef uint64_t vas_id_t;
 ///< Identifier for a currently attached VAS inside a process
 typedef uintptr_t vas_handle_t;
 
-#define VAS_HANDLE_PROCESS 0
+#define VAS_HANDLE_PROCESS vas_get_proc_handle()
 
 ///< state of the virtual address space
 typedef enum vas_state {
@@ -100,6 +100,9 @@ errval_t vas_tagging_enable(void);
 errval_t vas_tagging_disable(void);
 errval_t vas_tagging_tag(vas_handle_t vas);
 
+vas_handle_t vas_get_current_handle(void);
+vas_handle_t vas_get_proc_handle(void);
+
 /*
  *
  */
@@ -107,5 +110,6 @@ errval_t vas_map(vas_handle_t vas, void **retaddr, struct capref frame, size_t s
                  vregion_flags_t flags);
 errval_t vas_unmap(vas_handle_t vas, void *addr);
 
+errval_t vas_bench_cap_invoke_nop(vas_handle_t vh);
 
 #endif /* __LIBVAS_H */
