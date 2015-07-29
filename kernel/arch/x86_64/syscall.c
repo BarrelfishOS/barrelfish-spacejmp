@@ -1050,7 +1050,6 @@ static struct sysret kernel_tlb_tag(struct capability *kern_cap,
     lpaddr_t cr3 = paging_x86_64_context_current();
     if (cr3 & 0xfff) {
         if (enable) {
-            printf("kernel_tlb_tag: ILLEGAL INVOCATION [%016lx]\n", cr3);
             return SYSRET(SYS_ERR_ILLEGAL_INVOCATION);
         } else {
             paging_context_switch(cr3 & ~(0xFFF));
@@ -1060,13 +1059,11 @@ static struct sysret kernel_tlb_tag(struct capability *kern_cap,
     uint64_t cr4 = kernel_read_cr4();
     if (enable && !(cr4 & (1UL << 17))) {
         cr4 |= (1UL << 17);
-        printf("kernel_tlb_tag: ENABLING\n");
         kernel_write_cr4(cr4);
         tlb_tags_enabled = 1;
     } else {
         if (cr4 & (1UL << 17)) {
             cr4 &= ~(1UL << 17);
-            printf("kernel_tlb_tag: DISABLING\n");
             kernel_write_cr4(cr4);
             tlb_tags_enabled = 0;
         }

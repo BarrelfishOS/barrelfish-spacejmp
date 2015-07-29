@@ -577,7 +577,6 @@ static void tlb_tag_toggle_handle_call(struct monitor_blocking_binding *b,
                                        uint8_t enable)
 {
     errval_t err = SYS_ERR_OK;
-    debug_printf("tlb_tag_toggle_handle_call\n");
     if (enable != tlb_tags_enabled) {
         err = invoke_toggle_tlb_tags(cap_kernel, enable);
         if (err_is_ok(err)) {
