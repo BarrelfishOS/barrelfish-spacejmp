@@ -214,3 +214,83 @@ errval_t vas_client_seg_unmap(vas_id_t id, lvaddr_t vaddr)
 }
 
 
+errval_t vas_client_seg_create(struct vas_seg *seg)
+{
+    if (vas_service_client == NULL) {
+        return VAS_ERR_SERVICE_NOT_ENABLED;
+    }
+    errval_t err, msgerr;
+
+    uint64_t *nameptr = (uint64_t*)seg->name;
+    err = vas_srv_rpc.vtbl.seg_create(&vas_srv_rpc, nameptr[0], nameptr[1],
+                                      nameptr[2], nameptr[3], seg->vaddr,
+                                      seg->length, seg->frame, &msgerr, &seg->id);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    return msgerr;
+}
+
+errval_t vas_client_seg_lookup(struct vas_seg *seg)
+{
+    if (vas_service_client == NULL) {
+        return VAS_ERR_SERVICE_NOT_ENABLED;
+    }
+    errval_t err, msgerr;
+
+    uint64_t *nameptr = (uint64_t*)seg->name;
+    err = vas_srv_rpc.vtbl.seg_lookup(&vas_srv_rpc, nameptr[0], nameptr[1], nameptr[2],
+                                  nameptr[3], &msgerr, &seg->id);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    return msgerr;
+}
+
+errval_t vas_client_seg_delete(vas_seg_id_t sid)
+{
+    if (vas_service_client == NULL) {
+        return VAS_ERR_SERVICE_NOT_ENABLED;
+    }
+    errval_t err, msgerr;
+
+    err = vas_srv_rpc.vtbl.seg_delete(&vas_srv_rpc, sid, &msgerr);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    return msgerr;
+}
+
+errval_t vas_client_seg_attach(vas_id_t vid, vas_seg_id_t sid, vas_flags_t flags)
+{
+    if (vas_service_client == NULL) {
+        return VAS_ERR_SERVICE_NOT_ENABLED;
+    }
+    errval_t err, msgerr;
+
+    err = vas_srv_rpc.vtbl.seg_attach(&vas_srv_rpc, vid, sid, flags, &msgerr);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    return msgerr;
+}
+
+errval_t vas_client_seg_detach(vas_id_t vid, vas_seg_id_t sid)
+{
+    if (vas_service_client == NULL) {
+        return VAS_ERR_SERVICE_NOT_ENABLED;
+    }
+    errval_t err, msgerr;
+
+    err = vas_srv_rpc.vtbl.seg_detach(&vas_srv_rpc, vid, sid, &msgerr);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    return msgerr;
+}
+

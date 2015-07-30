@@ -31,4 +31,11 @@ errval_t vas_client_seg_map_fixed(vas_id_t id, lvaddr_t vaddr, struct capref fra
                                   size_t size, vas_flags_t flags);
 errval_t vas_client_seg_unmap(vas_id_t id, lvaddr_t vaddr);
 
+errval_t vas_client_seg_create(struct vas_seg *seg);
+errval_t vas_client_seg_lookup(struct vas_seg *seg);
+errval_t vas_client_seg_delete(vas_seg_id_t sid);
+errval_t vas_client_seg_attach(vas_id_t vid, vas_seg_id_t sid, vas_flags_t flags);
+errval_t vas_client_seg_detach(vas_id_t vid, vas_seg_id_t sid);
+
+
 #endif /* __VAS_CLIENT_H_ */

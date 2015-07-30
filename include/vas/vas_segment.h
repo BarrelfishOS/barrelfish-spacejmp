@@ -49,8 +49,9 @@ typedef uintptr_t vas_seg_handle_t;
 ///< location of the segment
 typedef enum vas_seg_type
 {
-    VAS_SEG_TYPE_RELOC = 0,  ///< the segment can be mapped at any address
-    VAS_SEG_TYPE_FIXED = 1   ///< the segment is only mappable at fixed faddr
+    VAS_SEG_TYPE_INVALID, ///<
+    VAS_SEG_TYPE_RELOC,   ///< the segment can be mapped at any address
+    VAS_SEG_TYPE_FIXED    ///< the segment is only mappable at fixed faddr
 } vas_seg_type_t;
 
 
@@ -67,13 +68,13 @@ errval_t vas_seg_create(const char *name, vas_seg_type_t type, size_t length,
                        lvaddr_t vaddr, struct capref frame, vas_flags_t flags,
                        vas_seg_id_t *ret_seg);
 errval_t vas_seg_free   (vas_seg_handle_t seg);
-errval_t gas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg);
+errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg);
 
-errval_t vas_seg_attach(vas_handle_t vas, vas_seg_id_t seg, vas_seg_handle_t *ret_seg);
+errval_t vas_seg_attach(vas_handle_t vas, vas_seg_handle_t seg);
 errval_t vas_seg_detach(vas_seg_handle_t ret_seg);
 
 lvaddr_t vas_seg_get_vaddr(vas_seg_handle_t);
 vas_seg_id_t vas_seg_get_id(vas_seg_handle_t);
 
 
-#endif /* __LIBVAS_H */
+#endif /* __LIBVAS_SEG_H */

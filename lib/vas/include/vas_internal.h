@@ -13,6 +13,7 @@
 #include <barrelfish/barrelfish.h>
 #include <barrelfish/core_state_arch.h>
 #include <vas/vas.h>
+#include <vas/vas_segment.h>
 #include <vas_debug.h>
 
 static inline struct vas *vas_get_vas_pointer(vas_handle_t vashandle)
@@ -54,6 +55,17 @@ struct vas
     struct cnoderef pagecn;             ///< pagecn cap
     struct capref   vroot;              ///< vroot
     struct single_slot_allocator pagecn_slot_alloc;
+};
+
+struct vas_seg
+{
+    vas_seg_id_t id;
+    char name [VAS_NAME_MAX_LEN];
+    vas_seg_type_t type;
+    vas_flags_t flags;
+    lvaddr_t vaddr;
+    size_t length;
+    struct capref frame;
 };
 
 #endif /* __VAS_INTERNAL_H_ */

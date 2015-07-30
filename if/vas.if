@@ -49,4 +49,24 @@ interface vas "VAS interface" {
                out errval msgerr,
                out uint64 id, 
                out uint16 tag);
+               
+    rpc seg_create(in uint64 name0,
+                   in uint64 name1,
+                   in uint64 name2,
+                   in uint64 name4,
+                   in uint64 vaddr,
+                   in uint64 size,
+                   in cap frame,
+                   out uint64 id,
+                   out errval msgerr);
+    rpc seg_delete(in uint64 sid, 
+                   out errval msgerr);
+    rpc seg_lookup(in uint64 name0,
+                   in uint64 name1,
+                   in uint64 name2,
+                   in uint64 name4,
+                   out uint64 id,
+                   out errval msgerr);
+    rpc seg_attach(in uint64 vid, in uint64 sid, in uint32 flags, out errval msgerr);
+    rpc seg_detach(in uint64 vid, in uint64 sid, out errval msgerr);
 };
