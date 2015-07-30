@@ -131,14 +131,41 @@ errval_t vas_seg_create(const char *name, vas_seg_type_t type, size_t length,
 
 errval_t vas_seg_free(vas_seg_handle_t sh)
 {
- //   struct vas_seg *seg = vas_seg_get_pointer(sh);
+    errval_t err;
 
-    return VAS_ERR_NOT_SUPPORTED;
+    struct vas_seg *seg = vas_seg_get_pointer(sh);
+
+    err = vas_client_seg_delete(seg->id);
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    free(seg);
+
+    return SYS_ERR_OK;
 }
 
 errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg)
 {
-    return VAS_ERR_NOT_SUPPORTED;
+    errval_t err;
+
+    struct vas_seg *seg = calloc(1, sizeof(struct vas_seg));
+    if (seg == NULL) {
+        return LIB_ERR_MALLOC_FAIL;
+    }
+
+    strncpy(seg->name, name, sizeof(seg->name));
+
+
+    err = vas_client_seg_lookup(seg);
+    if (err_is_fail(err)) {
+        free(seg);
+        return err;
+    }
+
+    *ret_seg = vas_seg_get_handle(seg);
+
+    return SYS_ERR_OK;
 }
 
 errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh)
@@ -149,9 +176,12 @@ errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh)
     return vas_client_seg_attach(vas->id, seg->id, seg->flags);
 }
 
-errval_t vas_seg_detach(vas_seg_handle_t ret_seg)
+errval_t vas_seg_detach(vas_handle_t vh, vas_seg_handle_t sh)
 {
-    return VAS_ERR_NOT_SUPPORTED;
+    struct vas_seg *seg = vas_seg_get_pointer(sh);
+    struct vas *vas = vas_get_vas_pointer(vh);
+
+    return vas_client_seg_detach(vas->id, seg->id);
 }
 
 size_t vas_seg_get_size(vas_seg_handle_t sh)
