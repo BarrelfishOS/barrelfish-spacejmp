@@ -241,7 +241,7 @@ errval_t vas_client_seg_lookup(struct vas_seg *seg)
 
     uint64_t *nameptr = (uint64_t*)seg->name;
     err = vas_srv_rpc.vtbl.seg_lookup(&vas_srv_rpc, nameptr[0], nameptr[1], nameptr[2],
-                                  nameptr[3], &msgerr, &seg->id);
+                                  nameptr[3], &msgerr, &seg->id, &seg->vaddr, &seg->length);
     if (err_is_fail(err)) {
         return err;
     }

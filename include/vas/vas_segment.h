@@ -75,6 +75,7 @@ errval_t vas_seg_detach(vas_seg_handle_t ret_seg);
 
 lvaddr_t vas_seg_get_vaddr(vas_seg_handle_t);
 vas_seg_id_t vas_seg_get_id(vas_seg_handle_t);
+size_t vas_seg_get_size(vas_seg_handle_t sh);
 
 
 #endif /* __LIBVAS_SEG_H */
