@@ -314,6 +314,11 @@ static void vas_create_call__rx(struct vas_binding *_binding, uint64_t name0,
     VAS_BENCH_PRINT(vas_create_total);
 }
 
+static void vas_delete_call__rx(struct vas_binding *_binding, uint64_t sid)
+{
+
+}
+
 static void vas_attach_call__rx(struct vas_binding *_binding, uint64_t id,
                                 struct capref vroot)
 {
@@ -627,15 +632,52 @@ static void vas_lookup_call__rx(struct vas_binding *_binding, uint64_t name0,
 #endif
 }
 
+static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0,
+                                    uint64_t name1, uint64_t name2, uint64_t name3,
+                                    uint64_t vaddr, uint64_t size, struct capref frame)
+{
+
+}
+
+static void vas_seg_delete_call__rx(struct vas_binding *_binding, uint64_t sid)
+{
+
+}
+
+static void vas_seg_lookup_call__rx(struct vas_binding *_binding, uint64_t name0,
+                                    uint64_t name1, uint64_t name2, uint64_t name3)
+{
+
+}
+
+static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
+                                    uint64_t sid, uint32_t flags)
+{
+
+}
+
+static void vas_seg_detach_call__rx(struct vas_binding *_binding, uint64_t vid,
+                                    uint64_t sid)
+{
+
+}
+
 
 static struct vas_rx_vtbl rx_vtbl = {
     .create_call = vas_create_call__rx,
+    .delete_call = vas_delete_call__rx,
     .attach_call = vas_attach_call__rx,
     .detach_call = vas_detach_call__rx,
     .map_call = vas_map_call__rx,
     .map_fixed_call = vas_map_fixed_call__rx,
     .unmap_call = vas_unmap_call__rx,
-    .lookup_call = vas_lookup_call__rx
+    .lookup_call = vas_lookup_call__rx,
+
+    .seg_create_call = vas_seg_create_call__rx,
+    .seg_delete_call = vas_seg_delete_call__rx,
+    .seg_attach_call = vas_seg_attach_call__rx,
+    .seg_detach_call = vas_seg_detach_call__rx,
+    .seg_lookup_call = vas_seg_lookup_call__rx
 };
 
 /*

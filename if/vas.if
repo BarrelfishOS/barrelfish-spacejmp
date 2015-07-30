@@ -16,6 +16,9 @@ interface vas "VAS interface" {
                out errval msgerr,
                out uint64 id,
                out uint16 tag);
+               
+    rpc delete(in uint64 id,
+               out errval msgerr);               
     
     rpc attach(in uint64 id,
                in cap vroot,
