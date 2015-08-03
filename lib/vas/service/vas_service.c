@@ -20,6 +20,8 @@
 #include <if/vas_defs.h>
 #include <flounder/flounder_txqueue.h>
 
+extern errval_t vspace_add_vregion(struct vspace *vspace, struct vregion *region);
+
 #ifdef NDEBUG
 #define VAS_SERVICE_DEBUG(x...)
 #else
@@ -93,14 +95,21 @@ struct vas_info
 
 struct list_elem *vas_registered;
 
+struct seg_attached
+{
+    struct vregion vreg;
+    struct capref frame;
+    struct seg_attached *next;
+};
+
 // abstract as vregion ?
 struct seg_info
 {
     struct list_elem l;
     vas_seg_id_t id;
     struct vregion vreg;
-    struct memobj_one_frame *mobj;
-    struct vas_seg seg;
+    struct seg_attached *attached;
+    struct memobj_one_frame mobj;
     struct vas_client *creator;
     char name [VAS_NAME_MAX_LEN];
 };
@@ -693,6 +702,12 @@ static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0
 
     union vas_name_arg narg = { .namefields = {name0, name1, name2, name3}};
 
+    /// todo: proper roundup
+    size = ROUND_UP(size, BASE_PAGE_SIZE);
+
+    /// todo: handling of flags
+    vregion_flags_t flags = VREGION_FLAGS_MASK;
+
     struct seg_info *si = (struct seg_info *)elem_lookup(seg_registered, elem_cmp_seg,
                                                          narg.namestring);
     if (si) {
@@ -702,15 +717,75 @@ static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0
         goto err_out;
     }
 
+    struct frame_identity id;
+    err = invoke_frame_identify(frame, &id);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
+                          _binding->st, narg.namestring, err_getstring(err));
+        goto err_out;
+    }
+
+    if ((size > (1UL << id.bits))) {
+        err = LIB_ERR_PMAP_FRAME_SIZE;
+        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
+                          _binding->st, narg.namestring, err_getstring(err));
+        goto err_out;
+    }
+
+    si = calloc(1, sizeof(*si));
+    if (!si) {
+        err = LIB_ERR_MALLOC_FAIL;
+        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
+                          _binding->st, narg.namestring, err_getstring(err));
+        goto err_out;
+    }
+
+    si->id = (uint64_t)si;
+    strncpy(si->name, narg.namestring, VAS_NAME_MAX_LEN);
+
+    err = memobj_create_one_frame(&si->mobj, size, 0);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
+                          _binding->st, narg.namestring, err_getstring(err));
+        goto err_out;
+    }
+
+    err = si->mobj.m.f.fill(&si->mobj.m, 0, frame, size);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
+                          _binding->st, narg.namestring, err_getstring(err));
+        goto err_out;
+    }
+
+    si->vreg.base = vaddr;
+    si->vreg.flags = flags;
+    si->vreg.size = size;
+    si->creator = _binding->st;
+
+    elem_insert(seg_registered, &si->l);
 
     err_out :
-    _binding->tx_vtbl.seg_create_response(_binding, NOP_CONT, err, si->id);
+    _binding->tx_vtbl.seg_create_response(_binding, NOP_CONT, err, VAS_ID_MASK | si->id);
 
     return;
 }
 
 static void vas_seg_delete_call__rx(struct vas_binding *_binding, uint64_t sid)
 {
+    errval_t err;
+
+    struct seg_info *si;
+    err = vas_verify_seg_id(sid, &si);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_delete: client=%p, seg=0x%016lx, err='%s'\n",
+                                          _binding->st, sid, err_getstring(err));
+        goto err_out;
+    }
+
+    err = VAS_ERR_NOT_SUPPORTED;
+    err_out:
+
+    _binding->tx_vtbl.seg_delete_response(_binding, NOP_CONT, err);
 
 }
 
@@ -730,7 +805,9 @@ static void vas_seg_lookup_call__rx(struct vas_binding *_binding, uint64_t name0
         goto err_out;
     }
 
-
+    id = si->id | VAS_ID_MARK;
+    vaddr = vregion_get_base_addr(&si->vreg);
+    length = vregion_get_size(&si->vreg);
 
 
     err_out :
@@ -752,13 +829,53 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
         goto err_out;
     }
 
+    struct vspace *vs = &vi->vas.vspace_state.vspace;
+
     struct seg_info *si;
-    err = vas_verify_seg_id(vid, &si);
+    err = vas_verify_seg_id(sid, &si);
     if (err_is_fail(err)) {
         VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, seg=0x%016lx, err='%s'\n",
                                           _binding->st, sid, err_getstring(err));
         goto err_out;
     }
+
+    struct seg_attached *att = calloc(1, sizeof(struct seg_attached));
+    if (!att) {
+        err = LIB_ERR_MALLOC_FAIL;
+        goto err_out;
+    }
+
+    struct vregion *vreg = &att->vreg;
+    vreg->vspace = vs;
+    vreg->memobj = &si->mobj.m;
+    vreg->base   = si->vreg.base;
+    vreg->offset = si->vreg.offset;
+    vreg->size   = si->vreg.size;
+    vreg->flags  = flags;
+
+    err = vspace_add_vregion(vs, vreg);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_VSPACE_ADD_REGION);
+        free(att);
+        goto err_out;
+    }
+
+    err = si->mobj.m.f.map_region(&si->mobj.m, vreg);
+    if (err_is_fail(err)) {
+        err =  err_push(err, LIB_ERR_MEMOBJ_MAP_REGION);
+        free(att);
+        goto err_out;
+    }
+
+    err = si->mobj.m.f.pagefault(&si->mobj.m, vreg, 0, 0);
+    if (err_is_fail(err)) {
+        err =  err_push(err, LIB_ERR_MEMOBJ_MAP_REGION);
+        free(att);
+        goto err_out;
+    }
+
+    att->next = si->attached;
+    si->attached = att;
 
     err_out:
     err = _binding->tx_vtbl.seg_attach_response(_binding, NOP_CONT, err);
@@ -780,12 +897,14 @@ static void vas_seg_detach_call__rx(struct vas_binding *_binding, uint64_t vid,
     }
 
     struct seg_info *si;
-    err = vas_verify_seg_id(vid, &si);
+    err = vas_verify_seg_id(sid, &si);
     if (err_is_fail(err)) {
         VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, seg=0x%016lx, err='%s'\n",
                                           _binding->st, sid, err_getstring(err));
         goto err_out;
     }
+
+    err = VAS_ERR_NOT_SUPPORTED;
 
     err_out:
     err = _binding->tx_vtbl.seg_attach_response(_binding, NOP_CONT, err);
