@@ -68,6 +68,11 @@ struct vas_client
     struct tx_queue txq;
 };
 
+struct list_elem
+{
+    struct list_elem *next;
+    struct list_elem *prev;
+};
 
 struct vas_attached
 {
@@ -77,6 +82,7 @@ struct vas_attached
 
 struct vas_info
 {
+    struct list_elem l;
     struct vas vas;
     struct vas_client *creator;
     struct vas_attached *attached;
@@ -85,8 +91,21 @@ struct vas_info
     struct vas_info *prev;
 };
 
+struct list_elem *vas_registered;
 
-struct vas_info *vas_registered;
+// abstract as vregion ?
+struct seg_info
+{
+    struct list_elem l;
+    vas_seg_id_t id;
+    struct vregion vreg;
+    struct memobj_one_frame *mobj;
+    struct vas_seg seg;
+    struct vas_client *creator;
+    char name [VAS_NAME_MAX_LEN];
+};
+
+struct list_elem *seg_registered;
 
 /*
  * ------------------------------------------------------------------------------
@@ -94,24 +113,41 @@ struct vas_info *vas_registered;
  * ------------------------------------------------------------------------------
  */
 
-static void vas_info_insert(struct vas_info *vi)
+static void elem_insert(struct list_elem *list, struct list_elem *elem)
 {
-    if (vas_registered) {
-        vas_registered->prev = vi;
-        vi->next = vas_registered;
-        vas_registered = vi;
+    if (list) {
+        list->prev = elem;
+        elem->next = list;
+        list = elem;
     } else {
-        vi->next = vi->prev = NULL;
-        vas_registered = vi;
+        elem->next = elem->prev = NULL;
+        list = elem;
     }
 }
 
 
-static struct vas_info *vas_info_lookup(const char *name)
+typedef int (*elem_cmp_fn_t)(struct list_elem *list, void *arg);
+
+static int elem_cmp_seg(struct list_elem *e, void *arg)
 {
-    struct vas_info *vi = vas_registered;
+    struct seg_info *si = (struct seg_info *)e;
+
+    return strncmp(si->name, (char *)arg, VAS_NAME_MAX_LEN);
+}
+
+static int elem_cmp_vas(struct list_elem *e, void *arg)
+{
+    struct vas_info *vi = (struct vas_info *)e;
+    return strncmp(vi->vas.name, (char *)arg, VAS_NAME_MAX_LEN);
+}
+
+
+static struct list_elem *elem_lookup(struct list_elem *list, elem_cmp_fn_t cmp,
+                                     void *arg)
+{
+    struct list_elem *vi = list;
     while(vi) {
-        if (strcmp(name, vi->vas.name) == 0) {
+        if (cmp(vi, arg) == 0) {
             return vi;
         }
         vi = vi->next;
@@ -121,23 +157,23 @@ static struct vas_info *vas_info_lookup(const char *name)
 
 #if 0
 
-static void vas_info_remove(struct vas_info *vi)
+static void elem_remove(struct list_elem *list, struct list_elem *elem)
 {
 
-    if (vi->prev == NULL) {
+    if (elem->prev == NULL) {
         /* remove the first in the queue */
-        vas_register = vi->next;
+        list = elem->next;
     } else {
         /* remove in the middle of the queue in the queue */
-        vi->prev->next = vi->next;
+        elem->prev->next = elem->next;
     }
 
-    if (vi->next) {
-        vi->next->prev = vi->prev;
+    if (elem->next) {
+        elem->next->prev = elem->prev;
     }
 
-    vi->next = NULL;
-    vi->prev = NULL;
+    elem->next = NULL;
+    elem->prev = NULL;
 }
 #endif
 
@@ -146,7 +182,7 @@ static void vas_info_remove(struct vas_info *vi)
  * id check helpers
  * ------------------------------------------------------------------------------
  */
-static inline errval_t vas_verify_id(uint64_t id, struct vas_info **ret_vi)
+static inline errval_t vas_verify_vas_id(uint64_t id, struct vas_info **ret_vi)
 {
     if ((id & VAS_ID_MARK) != VAS_ID_MARK) {
         return VAS_ERR_NOT_FOUND;
@@ -162,6 +198,21 @@ static inline errval_t vas_verify_id(uint64_t id, struct vas_info **ret_vi)
     return SYS_ERR_OK;
 }
 
+static inline errval_t vas_verify_seg_id(uint64_t id, struct seg_info **ret_si)
+{
+    if ((id & VAS_ID_MARK) != VAS_ID_MARK) {
+        return VAS_ERR_NOT_FOUND;
+    }
+
+    struct seg_info *si = (struct seg_info *)(VAS_ID_MASK & id);
+    if (si->id != (VAS_ID_MASK & id)) {
+        return VAS_ERR_NOT_FOUND;
+    }
+
+    *ret_si = si;
+
+    return SYS_ERR_OK;
+}
 
 /*
  * ------------------------------------------------------------------------------
@@ -272,7 +323,7 @@ static void vas_create_call__rx(struct vas_binding *_binding, uint64_t name0,
             err = _binding->tx_vtbl.create_response(_binding, NOP_CONT,err, 0,0);
             free(vi);
         } else {
-            vas_info_insert(vi);
+            elem_insert(vas_registered, &vi->l);
             err = _binding->tx_vtbl.create_response(_binding, NOP_CONT,err,
                                                     VAS_ID_MARK | vi->vas.id,
                                                     vi->vas.tag);
@@ -335,7 +386,7 @@ static void vas_attach_call__rx(struct vas_binding *_binding, uint64_t id,
     VAS_SERVICE_DEBUG("[request] attach: client=%p, vas=0x%016lx\n", _binding->st, id);
 
     struct vas_info *vi;
-    err = vas_verify_id(id, &vi);
+    err = vas_verify_vas_id(id, &vi);
 
     if (err_is_fail(err)) {
         VAS_SERVICE_DEBUG("[request] attach: client=%p, vas=0x%016lx, err='%s'\n",
@@ -411,7 +462,7 @@ static void vas_detach_call__rx(struct vas_binding *_binding, uint64_t id)
 
 
     struct vas_info *vi;
-    mst->mst.err = vas_verify_id(id, &vi);
+    mst->mst.err = vas_verify_vas_id(id, &vi);
     if (err_is_fail(mst->mst.err)) {
         VAS_SERVICE_DEBUG("[request] detach: client=%p, vas=0x%016lx, err='%s'\n",
                           client, id, err_getstring(mst->mst.err));
@@ -437,7 +488,7 @@ static void vas_map_call__rx(struct vas_binding *_binding, uint64_t id,
     VAS_SERVICE_DEBUG("[request] map: client=%p, vas=0x%016lx, size=0x%016lx\n",
                       _binding->st, id, size);
 
-    err = vas_verify_id(id, &vi);
+    err = vas_verify_vas_id(id, &vi);
 
 #ifndef VAS_SERVICE_USE_RPC
     struct vas_client *client = _binding->st;
@@ -531,7 +582,7 @@ static void vas_map_fixed_call__rx(struct vas_binding *_binding, uint64_t id,
     mst->mst.send =  vas_map_fixed_response_tx;
 
     struct vas_info *vi;
-    mst->mst.err = vas_verify_id(id, &vi);
+    mst->mst.err = vas_verify_vas_id(id, &vi);
     if (err_is_fail(mst->mst.err)) {
         VAS_SERVICE_DEBUG("[request] map_fixed: client=%p, vas=0x%016lx, err='%s'\n",
                           client, id, err_getstring(mst->mst.err));
@@ -585,7 +636,7 @@ static void vas_unmap_call__rx(struct vas_binding *_binding, uint64_t id,
     mst->mst.send =  vas_unmap_response_tx;
 
     struct vas_info *vi;
-    mst->mst.err = vas_verify_id(id, &vi);
+    mst->mst.err = vas_verify_vas_id(id, &vi);
     if (err_is_fail(mst->mst.err)) {
         VAS_SERVICE_DEBUG("[request] attach: client=%p, vas=0x%016lx, err='%s'\n",
                           client, id, err_getstring(mst->mst.err));
@@ -603,9 +654,11 @@ static void vas_lookup_call__rx(struct vas_binding *_binding, uint64_t name0,
 {
     union vas_name_arg narg = { .namefields = {name0, name1, name2, name3}};
 
-    VAS_SERVICE_DEBUG("[request] lookup: client=%p, name='%s'\n", _binding->st, narg.namestring);
+    VAS_SERVICE_DEBUG("[request] lookup: client=%p, name='%s'\n", _binding->st,
+                      narg.namestring);
 
-    struct vas_info *vi = vas_info_lookup(narg.namestring);
+    struct vas_info *vi = (struct vas_info *)elem_lookup(vas_registered, elem_cmp_vas,
+                                                         narg.namestring);
 
 #ifdef VAS_SERVICE_USE_RPC
     if (vi) {
@@ -636,7 +689,24 @@ static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0
                                     uint64_t name1, uint64_t name2, uint64_t name3,
                                     uint64_t vaddr, uint64_t size, struct capref frame)
 {
+    errval_t err;
 
+    union vas_name_arg narg = { .namefields = {name0, name1, name2, name3}};
+
+    struct seg_info *si = (struct seg_info *)elem_lookup(seg_registered, elem_cmp_seg,
+                                                         narg.namestring);
+    if (si) {
+        err = VAS_ERR_CREATE_NAME_CONFLICT;
+        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
+                                  _binding->st, narg.namestring, err_getstring(err));
+        goto err_out;
+    }
+
+
+    err_out :
+    _binding->tx_vtbl.seg_create_response(_binding, NOP_CONT, err, si->id);
+
+    return;
 }
 
 static void vas_seg_delete_call__rx(struct vas_binding *_binding, uint64_t sid)
@@ -647,19 +717,81 @@ static void vas_seg_delete_call__rx(struct vas_binding *_binding, uint64_t sid)
 static void vas_seg_lookup_call__rx(struct vas_binding *_binding, uint64_t name0,
                                     uint64_t name1, uint64_t name2, uint64_t name3)
 {
+    errval_t err;
+
+    uint64_t id = 0,  vaddr = 0,  length = 0;
+
+    union vas_name_arg narg = { .namefields = {name0, name1, name2, name3}};
+
+    struct seg_info *si = (struct seg_info *)elem_lookup(seg_registered,
+                                                         elem_cmp_seg, narg.namestring);
+    if (!si) {
+        err = VAS_ERR_CREATE_NAME_CONFLICT;
+        goto err_out;
+    }
+
+
+
+
+    err_out :
+    _binding->tx_vtbl.seg_lookup_response(_binding, NOP_CONT, err, id, vaddr, length);
+
+    return;
 
 }
 
 static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
                                     uint64_t sid, uint32_t flags)
 {
+    errval_t err;
+    struct vas_info *vi;
+    err = vas_verify_vas_id(vid, &vi);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, vas=0x%016lx, err='%s'\n",
+                                  _binding->st, vid, err_getstring(err));
+        goto err_out;
+    }
 
+    struct seg_info *si;
+    err = vas_verify_seg_id(vid, &si);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, seg=0x%016lx, err='%s'\n",
+                                          _binding->st, sid, err_getstring(err));
+        goto err_out;
+    }
+
+    err_out:
+    err = _binding->tx_vtbl.seg_attach_response(_binding, NOP_CONT, err);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "oops");
+    }
 }
 
 static void vas_seg_detach_call__rx(struct vas_binding *_binding, uint64_t vid,
                                     uint64_t sid)
 {
+    errval_t err;
+    struct vas_info *vi;
+    err = vas_verify_vas_id(vid, &vi);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, vas=0x%016lx, err='%s'\n",
+                                  _binding->st, vid, err_getstring(err));
+        goto err_out;
+    }
 
+    struct seg_info *si;
+    err = vas_verify_seg_id(vid, &si);
+    if (err_is_fail(err)) {
+        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, seg=0x%016lx, err='%s'\n",
+                                          _binding->st, sid, err_getstring(err));
+        goto err_out;
+    }
+
+    err_out:
+    err = _binding->tx_vtbl.seg_attach_response(_binding, NOP_CONT, err);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "oops");
+    }
 }
 
 
