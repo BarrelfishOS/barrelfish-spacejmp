@@ -14,6 +14,7 @@
 #include <barrelfish/barrelfish.h>
 #include <octopus/octopus.h>
 #include <vas/vas.h>
+#include <vas/vas_segment.h>
 
 #define VAS_IDENTIFIER "/vas/test/"
 
@@ -159,6 +160,36 @@ int main(int argc, char *argv[])
         USER_PANIC_ERR(err, "failed to switch to original");
     }
     debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
+
+    /* segment test */
+    debug_printf("## VAS SEGMENT TEST\n");
+
+#define VAS_TEST_NUM_SEG 4
+
+    vas_seg_handle_t seg[VAS_TEST_NUM_SEG];
+    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
+        snprintf(name, 32, "/seg/test/" "%u", i);
+        err = vas_seg_alloc(name, 0, LARGE_PAGE_SIZE, 0x80000000000 + 2*i*LARGE_PAGE_SIZE, VAS_FLAGS_PERM_READ, &seg[i]);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to create segment");
+        }
+    }
+
+    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
+        err = vas_seg_attach(vas[0], seg[i], VAS_FLAGS_PERM_READ);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to switch to original");
+        }
+    }
+
+    err = vas_switch(vas[0]);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to switch to original");
+    }
+
+    debug_printf("%lx \n", *((uint64_t*)0x80000000000));
+
+    *((uint64_t*)0x80000000000) = 0x1;
 
 
     debug_printf("## VAS TEST TERMINATED\n");
