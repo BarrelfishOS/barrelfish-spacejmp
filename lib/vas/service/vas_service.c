@@ -122,15 +122,15 @@ struct list_elem *seg_registered;
  * ------------------------------------------------------------------------------
  */
 
-static void elem_insert(struct list_elem *list, struct list_elem *elem)
+static void elem_insert(struct list_elem **list, struct list_elem *elem)
 {
-    if (list) {
-        list->prev = elem;
-        elem->next = list;
-        list = elem;
+    if (*list) {
+        (*list)->prev = elem;
+        elem->next = *list;
+        *list = elem;
     } else {
         elem->next = elem->prev = NULL;
-        list = elem;
+        *list = elem;
     }
 }
 
@@ -140,6 +140,8 @@ typedef int (*elem_cmp_fn_t)(struct list_elem *list, void *arg);
 static int elem_cmp_seg(struct list_elem *e, void *arg)
 {
     struct seg_info *si = (struct seg_info *)e;
+
+    debug_printf("elem_cmp_seg: %s %s  : %u\n", si->name, (char *)arg, strncmp(si->name, (char *)arg, VAS_NAME_MAX_LEN));
 
     return strncmp(si->name, (char *)arg, VAS_NAME_MAX_LEN);
 }
@@ -332,7 +334,7 @@ static void vas_create_call__rx(struct vas_binding *_binding, uint64_t name0,
             err = _binding->tx_vtbl.create_response(_binding, NOP_CONT,err, 0,0);
             free(vi);
         } else {
-            elem_insert(vas_registered, &vi->l);
+            elem_insert(&vas_registered, &vi->l);
             err = _binding->tx_vtbl.create_response(_binding, NOP_CONT,err,
                                                     VAS_ID_MARK | vi->vas.id,
                                                     vi->vas.tag);
@@ -757,15 +759,19 @@ static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0
         goto err_out;
     }
 
+    VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', id=0x%016lx\n",
+                       _binding->st, narg.namestring, si->id);
+
+
     si->vreg.base = vaddr;
     si->vreg.flags = flags;
     si->vreg.size = size;
     si->creator = _binding->st;
 
-    elem_insert(seg_registered, &si->l);
+    elem_insert(&seg_registered, &si->l);
 
     err_out :
-    _binding->tx_vtbl.seg_create_response(_binding, NOP_CONT, err, VAS_ID_MASK | si->id);
+    _binding->tx_vtbl.seg_create_response(_binding, NOP_CONT, err, VAS_ID_MARK | si->id);
 
     return;
 }
@@ -820,11 +826,14 @@ static void vas_seg_lookup_call__rx(struct vas_binding *_binding, uint64_t name0
 static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
                                     uint64_t sid, uint32_t flags)
 {
+    VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, vas=0x%016lx, seg=0x%016lx\n",
+                      _binding->st, vid, sid);
+
     errval_t err;
     struct vas_info *vi;
     err = vas_verify_vas_id(vid, &vi);
     if (err_is_fail(err)) {
-        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, vas=0x%016lx, err='%s'\n",
+        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, no vas=0x%016lx, err='%s'\n",
                                   _binding->st, vid, err_getstring(err));
         goto err_out;
     }
@@ -838,6 +847,9 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
                                           _binding->st, sid, err_getstring(err));
         goto err_out;
     }
+
+    flags = flags & si->vreg.flags;
+
 
     struct seg_attached *att = calloc(1, sizeof(struct seg_attached));
     if (!att) {
@@ -857,6 +869,8 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
     if (err_is_fail(err)) {
         err = err_push(err, LIB_ERR_VSPACE_ADD_REGION);
         free(att);
+        VAS_SERVICE_DEBUG("[request] seg_attach: vspace add client=%p, seg=0x%016lx, err='%s'\n",
+                          _binding->st, sid, err_getstring(err));
         goto err_out;
     }
 
@@ -864,6 +878,8 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
     if (err_is_fail(err)) {
         err =  err_push(err, LIB_ERR_MEMOBJ_MAP_REGION);
         free(att);
+        VAS_SERVICE_DEBUG("[request] seg_attach: map add client=%p, seg=0x%016lx, err='%s'\n",
+                          _binding->st, sid, err_getstring(err));
         goto err_out;
     }
 
@@ -871,11 +887,32 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
     if (err_is_fail(err)) {
         err =  err_push(err, LIB_ERR_MEMOBJ_MAP_REGION);
         free(att);
+        VAS_SERVICE_DEBUG("[request] seg_attach: pagefault client=%p, seg=0x%016lx, err='%s'\n",
+                                  _binding->st, sid, err_getstring(err));
         goto err_out;
     }
 
     att->next = si->attached;
     si->attached = att;
+
+#define X86_64_PML4_BASE(base)         (((uint64_t)(base) >> 39) & X86_64_PTABLE_MASK)
+
+    uint32_t entry = X86_64_PML4_BASE(vreg->base);
+    uint32_t slot = entry / 64;
+    uint32_t bit = entry % 64;
+
+    VAS_BENCH_START(vas_map_inherit);
+    if (!(vi->map[slot] & (1UL << bit))) {
+        struct vas_attached *at = vi->attached;
+        while(at) {
+            err = vas_vspace_inherit_regions(&vi->vas, at->vroot, entry, entry);
+            if (err_is_fail(err)) {
+                USER_PANIC_ERR(err, "could not inherit region");
+            }
+            at = at->next;
+        }
+        vi->map[slot] |= (1UL << bit);
+    }
 
     err_out:
     err = _binding->tx_vtbl.seg_attach_response(_binding, NOP_CONT, err);

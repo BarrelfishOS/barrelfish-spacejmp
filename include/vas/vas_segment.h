@@ -70,7 +70,7 @@ errval_t vas_seg_create(const char *name, vas_seg_type_t type, size_t length,
 errval_t vas_seg_free   (vas_seg_handle_t seg);
 errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg);
 
-errval_t vas_seg_attach(vas_handle_t vas, vas_seg_handle_t seg);
+errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh, vas_flags_t flags);
 errval_t vas_seg_detach(vas_handle_t vh, vas_seg_handle_t sh);
 
 lvaddr_t vas_seg_get_vaddr(vas_seg_handle_t);

@@ -168,12 +168,12 @@ errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg)
     return SYS_ERR_OK;
 }
 
-errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh)
+errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh, vas_flags_t flags)
 {
     struct vas_seg *seg = vas_seg_get_pointer(sh);
     struct vas *vas = vas_get_vas_pointer(vh);
 
-    return vas_client_seg_attach(vas->id, seg->id, seg->flags);
+    return vas_client_seg_attach(vas->id, seg->id, flags);
 }
 
 errval_t vas_seg_detach(vas_handle_t vh, vas_seg_handle_t sh)
