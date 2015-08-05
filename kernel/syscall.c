@@ -345,6 +345,7 @@ sys_map(struct capability *ptable, cslot_t slot, capaddr_t source_cptr,
 
     errval_t err;
 
+
     /* Lookup source cap */
     struct capability *root = &dcb_current->cspace.cap;
     struct cte *src_cte;
@@ -354,11 +355,31 @@ sys_map(struct capability *ptable, cslot_t slot, capaddr_t source_cptr,
         return SYSRET(err_push(err, SYS_ERR_SOURCE_CAP_LOOKUP));
     }
 
-    /* Perform map */
-    // XXX: this does not check if we do have CAPRIGHTS_READ_WRITE on
-    // the destination cap (the page table we're inserting into)
-    return SYSRET(caps_copy_to_vnode(cte_for_cap(ptable), slot, src_cte, flags,
-                                     offset, pte_count));
+    if (type_is_vnode(src_cte->cap.type) && pte_count != 1) {
+        enum objtype t = src_cte->cap.type;
+        // only allow single ptable mappings
+        for (uintptr_t i = 0; i < pte_count; ++i) {
+            if (t != src_cte->cap.type) {
+                return SYSRET(SYS_ERR_VNODE_TYPE);
+            }
+            err = caps_copy_to_vnode(cte_for_cap(ptable), slot, src_cte, flags,
+                                                     offset, 1);
+            if (err_is_fail(err)) {
+                return SYSRET(err);
+            }
+
+            slot++;
+            src_cte++;
+        }
+
+        return SYSRET(SYS_ERR_VM_MAP_SIZE);
+    } else {
+        /* Perform map */
+        // XXX: this does not check if we do have CAPRIGHTS_READ_WRITE on
+        // the destination cap (the page table we're inserting into)
+        return SYSRET(caps_copy_to_vnode(cte_for_cap(ptable), slot, src_cte, flags,
+                                         offset, pte_count));
+    }
 }
 
 struct sysret sys_delete(struct capability *root, capaddr_t cptr, uint8_t bits)
