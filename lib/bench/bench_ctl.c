@@ -196,14 +196,11 @@ void bench_ctl_dump_analysis(bench_ctl_t *ctl,
     cycles_t *final_array =  do_sorting(array, len);
     size_t max99 = (size_t)((0.99 * len) + 0.5);
 
-#if BENCH_DUMP_OCTAVE
     cycles_t avg, std_dev;
     bench_stddev(array, len, 0, &avg, &std_dev);
     std_dev = (cycles_t)sqrt(std_dev);
-#endif
 
 
-#if BENCH_DUMP_OCTAVE
 
     printf("%% [name]  [runs]  [avg]  [stdev]  [min]  [med]  [P99]  [max]\n");
 
@@ -212,7 +209,7 @@ void bench_ctl_dump_analysis(bench_ctl_t *ctl,
            final_array[0], final_array[max99-1], final_array[len-1]);
 
     free(array_orig);
-#else
+#if 0
     printf("run [%"PRIu64"], med_pos[%"PRIu64"], min_pos[%"PRIu64"], "
            "P99[%"PRIu64"], max[%"PRIu64"]\n",
            (uint64_t)len,
