@@ -346,10 +346,10 @@ handle_unmap(
 
     /* Retrieve arguments */
     capaddr_t  mapping_cptr  = (capaddr_t)sa->arg2;
-    int mapping_bits         = (((int)sa->arg3) >> 20) & 0xff;
-    size_t pte_count         = (((size_t)sa->arg3) >> 10) & 0x3ff;
+    int mapping_bits         = (((int)sa->arg3) >> 24) & 0xff;
+    size_t pte_count         = (((size_t)sa->arg3) >> 12) & 0xfff;
     pte_count               += 1;
-    size_t entry             = ((size_t)sa->arg3) & 0x3ff;
+    size_t entry             = ((size_t)sa->arg3) & 0xfff;
 
     errval_t err;
     struct cte *mapping = NULL;
@@ -1007,6 +1007,9 @@ static struct sysret handle_debug_syscall(int msg)
 {
     struct sysret retval = { .error = SYS_ERR_OK };
     switch (msg) {
+        case DEBUG_FLUSH_CACHE:
+            cp15_invalidate_i_and_d_caches_fast();
+            break;
         case DEBUG_CONTEXT_COUNTER_RESET:
             dispatch_csc_reset();
             break;
