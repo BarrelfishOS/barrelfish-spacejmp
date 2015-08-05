@@ -156,7 +156,7 @@ void bench_stddev(cycles_t *array, size_t len, uint8_t correction,
     cycles_t sum = 0;
     size_t count = 0;
     /// discard some initiali observations
-    for (size_t i = len >> 3; i < len; i++) {
+    for (size_t i = 0; i < len; i++) {
         if (array[i] != BENCH_IGNORE_WATERMARK) {
             cycles_t subsum = array[i] - avg;
             sum += (subsum * subsum);

@@ -10,9 +10,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <assert.h>
 #include <barrelfish/barrelfish.h>
 #include <bench/bench.h>
+
 
 bench_ctl_t *bench_ctl_init(enum bench_ctl_mode mode,
                             size_t              dimensions,
@@ -21,12 +23,19 @@ bench_ctl_t *bench_ctl_init(enum bench_ctl_mode mode,
     bench_ctl_t *ctl;
 
     ctl = calloc(1, sizeof(*ctl));
+    if (!ctl) {
+        return NULL;
+    }
     ctl->mode = mode;
     ctl->result_dimensions = dimensions;
     ctl->min_runs = min_runs;
 
     if (mode == BENCH_MODE_FIXEDRUNS) {
         ctl->data = calloc(min_runs * dimensions, sizeof(*ctl->data));
+        if (!ctl->data) {
+            free(ctl);
+            return NULL;
+        }
     } else {
         assert(!"NYI");
     }
@@ -180,27 +189,29 @@ void bench_ctl_dump_analysis(bench_ctl_t *ctl,
 {
     size_t len = ctl->result_count;
     cycles_t *array = get_array(ctl, dimension);
+    cycles_t *array_orig  = array;
+    len -= ctl->dry_runs;
+    array += ctl->dry_runs;
+
+    cycles_t *final_array =  do_sorting(array, len);
+    size_t max99 = (size_t)((0.99 * len) + 0.5);
 
 #if BENCH_DUMP_OCTAVE
     cycles_t avg, std_dev;
     bench_stddev(array, len, 0, &avg, &std_dev);
+    std_dev = (cycles_t)sqrt(std_dev);
 #endif
 
-    cycles_t *final_array =  do_sorting(array, len);
 
-    size_t max99 = (size_t)((0.99 * len) + 0.5);
 #if BENCH_DUMP_OCTAVE
 
-    // printf("\% [name]  [runs]  [avg]  [stdev]  [min]  [med]  [P99]  [max]\n");
-    
-    printf("%% %s\n%"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64
+    printf("%% [name]  [runs]  [avg]  [stdev]  [min]  [med]  [P99]  [max]\n");
+
+    printf("%% '%s', %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64
            ", %"PRIu64"; \n", prefix,(uint64_t)len, avg, std_dev, final_array[len/2],
            final_array[0], final_array[max99-1], final_array[len-1]);
 
-    printf("%% %s\n%"PRIu64", %f, %f, %f, %f, %f, %f;\n",prefix, (uint64_t)len,
-           (avg /(float)tscperus), (std_dev / ((float)tscperus*(float)tscperus)),
-           (final_array[len/2]/(float)tscperus), (final_array[0]/(float)tscperus),
-           (final_array[max99-1]/(float)tscperus),(final_array[len-1]/(float)tscperus));
+    free(array_orig);
 #else
     printf("run [%"PRIu64"], med_pos[%"PRIu64"], min_pos[%"PRIu64"], "
            "P99[%"PRIu64"], max[%"PRIu64"]\n",
