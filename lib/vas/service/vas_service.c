@@ -107,9 +107,8 @@ struct seg_info
 {
     struct list_elem l;
     vas_seg_id_t id;
-    struct vregion vreg;
+    struct vas_seg seg;
     struct seg_attached *attached;
-    struct memobj_one_frame mobj;
     struct vas_client *creator;
     char name [VAS_NAME_MAX_LEN];
 };
@@ -140,8 +139,6 @@ typedef int (*elem_cmp_fn_t)(struct list_elem *list, void *arg);
 static int elem_cmp_seg(struct list_elem *e, void *arg)
 {
     struct seg_info *si = (struct seg_info *)e;
-
-    debug_printf("elem_cmp_seg: %s %s  : %u\n", si->name, (char *)arg, strncmp(si->name, (char *)arg, VAS_NAME_MAX_LEN));
 
     return strncmp(si->name, (char *)arg, VAS_NAME_MAX_LEN);
 }
@@ -708,7 +705,7 @@ static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0
     size = ROUND_UP(size, BASE_PAGE_SIZE);
 
     /// todo: handling of flags
-    vregion_flags_t flags = VREGION_FLAGS_MASK;
+    //vregion_flags_t flags = VREGION_FLAGS_MASK;
 
     struct seg_info *si = (struct seg_info *)elem_lookup(seg_registered, elem_cmp_seg,
                                                          narg.namestring);
@@ -745,31 +742,22 @@ static void vas_seg_create_call__rx(struct vas_binding *_binding, uint64_t name0
     si->id = (uint64_t)si;
     strncpy(si->name, narg.namestring, VAS_NAME_MAX_LEN);
 
-    err = memobj_create_one_frame(&si->mobj, size, 0);
-    if (err_is_fail(err)) {
-        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
-                          _binding->st, narg.namestring, err_getstring(err));
-        goto err_out;
-    }
-
-    err = si->mobj.m.f.fill(&si->mobj.m, 0, frame, size);
-    if (err_is_fail(err)) {
-        VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', err='%s'\n",
-                          _binding->st, narg.namestring, err_getstring(err));
-        goto err_out;
-    }
-
     VAS_SERVICE_DEBUG("[request] seg_create: client=%p, name='%s', id=0x%016lx\n",
                        _binding->st, narg.namestring, si->id);
 
 
-    si->vreg.base = vaddr;
-    si->vreg.flags = flags;
-    si->vreg.size = size;
+    si->seg.vaddr = vaddr;
+    si->seg.length = size;
+    si->seg.frame = frame;
+    si->seg.flags = VREGION_FLAGS_READ_WRITE;
     si->creator = _binding->st;
 
-    elem_insert(&seg_registered, &si->l);
-
+    err =  vas_segment_create(&si->seg);
+    if (err_is_fail(err)) {
+        free(si);
+    } else {
+        elem_insert(&seg_registered, &si->l);
+    }
     err_out :
     _binding->tx_vtbl.seg_create_response(_binding, NOP_CONT, err, VAS_ID_MARK | si->id);
 
@@ -812,8 +800,8 @@ static void vas_seg_lookup_call__rx(struct vas_binding *_binding, uint64_t name0
     }
 
     id = si->id | VAS_ID_MARK;
-    vaddr = vregion_get_base_addr(&si->vreg);
-    length = vregion_get_size(&si->vreg);
+    vaddr = si->seg.vaddr;
+    length = si->seg.length;
 
 
     err_out :
@@ -838,7 +826,7 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
         goto err_out;
     }
 
-    struct vspace *vs = &vi->vas.vspace_state.vspace;
+    struct vspace *vs = NULL; //&vi->vas.vspace_state.vspace;
 
     struct seg_info *si;
     err = vas_verify_seg_id(sid, &si);
@@ -848,7 +836,6 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
         goto err_out;
     }
 
-    flags = flags & si->vreg.flags;
 
 
     struct seg_attached *att = calloc(1, sizeof(struct seg_attached));
@@ -859,10 +846,7 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
 
     struct vregion *vreg = &att->vreg;
     vreg->vspace = vs;
-    vreg->memobj = &si->mobj.m;
-    vreg->base   = si->vreg.base;
-    vreg->offset = si->vreg.offset;
-    vreg->size   = si->vreg.size;
+
     vreg->flags  = flags;
 
     err = vspace_add_vregion(vs, vreg);
@@ -874,23 +858,7 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
         goto err_out;
     }
 
-    err = si->mobj.m.f.map_region(&si->mobj.m, vreg);
-    if (err_is_fail(err)) {
-        err =  err_push(err, LIB_ERR_MEMOBJ_MAP_REGION);
-        free(att);
-        VAS_SERVICE_DEBUG("[request] seg_attach: map add client=%p, seg=0x%016lx, err='%s'\n",
-                          _binding->st, sid, err_getstring(err));
-        goto err_out;
-    }
 
-    err = si->mobj.m.f.pagefault(&si->mobj.m, vreg, 0, 0);
-    if (err_is_fail(err)) {
-        err =  err_push(err, LIB_ERR_MEMOBJ_MAP_REGION);
-        free(att);
-        VAS_SERVICE_DEBUG("[request] seg_attach: pagefault client=%p, seg=0x%016lx, err='%s'\n",
-                                  _binding->st, sid, err_getstring(err));
-        goto err_out;
-    }
 
     att->next = si->attached;
     si->attached = att;

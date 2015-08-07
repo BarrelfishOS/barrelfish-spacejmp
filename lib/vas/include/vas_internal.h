@@ -26,22 +26,13 @@ static inline vas_handle_t vas_get_handle(struct vas* vas)
     return (vas_handle_t)vas;
 }
 
-
 #define VAS_ID_MASK 0x0000ffffffffffffUL
 #define VAS_ID_TAG_MASK 0x0fff000000000000UL
 #define VAS_ID_MASK 0x0000ffffffffffffUL
 #define VAS_ID_MARK 0xA000000000000000UL
 
-static inline uint16_t vas_id_extract_tag(vas_id_t id)
-{
-    return (uint16_t)((id >> 48) & 0xfff);
-}
 
-static inline vas_id_t vas_id_insert_tag(vas_id_t id, uint16_t tag)
-{
-    return ((id & ~VAS_ID_TAG_MASK) | (((vas_id_t)tag & 0xfff) << 48));
-}
-
+#if 0
 ///< internal representation of the VAS
 struct vas
 {
@@ -67,6 +58,64 @@ struct vas_seg
     size_t length;
     struct capref frame;
 };
+#endif
+
+struct vas_vregion
+{
+    struct capref *pt;               ///< pt covering this segment
+    struct capref *pdir;             ///< pdir covering this segment
+    struct vas_seg *seg;                ///< pointer to the backing segment
+    struct vas_vregion *next;       ///< pointer to the next region
+};
+
+struct vas_vspace
+{
+
+};
+
+struct vas_vnode
+{
+    lvaddr_t vaddr;
+    struct capref vnode;
+    struct vas_vnode *next;
+    struct vas_vnode *children;
+};
+
+///< internal representation of the VAS
+struct vas
+{
+    vas_id_t id;                        ///< the vas id
+    uint16_t tag;                       ///< tag for the vas
+    vas_state_t state;                  ///< the state of the vas
+    vas_flags_t perms;                  ///< associated permissions
+    char name[VAS_NAME_MAX_LEN];        ///< name of the vas
+    struct capref pagecn_cap;           ///< cap of the page cn
+    struct cnoderef pagecn;             ///< pagecn cap
+    struct capref   vroot;              ///< vroot
+    struct vas_vregion *segs;           ///< attached segments in this VAS
+    struct vas_vnode *vnodes;
+};
+
+struct vas_seg
+{
+    vas_seg_id_t id;
+    char name [VAS_NAME_MAX_LEN];
+    vas_seg_type_t type;
+    vas_flags_t flags;
+    lvaddr_t vaddr;
+    size_t length;
+
+    struct capref segcn_cap;           ///< cap of the page cn
+    struct cnoderef segcn;             ///< pagecn caps
+
+    struct capref root;             ///< capability of the root of the subtree
+    enum objtype roottype;              ///< type of the root capability
+    uint16_t slot_start;                 ///< start slot in the root
+    uint16_t slot_num;                   ///< end slot in the root
+    struct capref frame;
+};
+
+errval_t vas_segment_create(struct vas_seg *seg);
 
 #endif /* __VAS_INTERNAL_H_ */
 

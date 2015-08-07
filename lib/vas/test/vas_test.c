@@ -102,7 +102,76 @@ int main(int argc, char *argv[])
         }
     }
 
+
+    /* segment test */
+    debug_printf("## VAS SEGMENT TEST\n");
+
+#define VAS_TEST_NUM_SEG 4
+
+    vas_seg_handle_t seg[VAS_TEST_NUM_SEG];
+    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
+        snprintf(name, 32, "/seg/test/" "%u", i);
+        err = vas_seg_alloc(name, 0, LARGE_PAGE_SIZE + 2*i*LARGE_PAGE_SIZE, 0x80000000000 + 2*i*LARGE_PAGE_SIZE, VAS_FLAGS_PERM_READ, &seg[i]);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to create segment");
+        }
+    }
+
+    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
+        err = vas_seg_attach(vas[0], seg[i], VAS_FLAGS_PERM_READ);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to switch to original");
+        }
+    }
+
+    err = vas_switch(vas[0]);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to switch to original");
+    }
+
+
+    err = oct_barrier_leave(record);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "oct barrier leave failed");
+    }
+
+    debug_printf("switching back go original address space\n");
+    err = vas_switch(VAS_HANDLE_PROCESS);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to switch to original");
+    }
+
+    debug_printf("## VAS TEST TERMINATED\n");
+
+    while(1);
+
+
     void *buf1, *buf2;
+    uint64_t *data = buf1;
+    debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
+
+
+    for (size_t i = 0; i < proc_total; ++i) {
+        debug_printf("proc[%lu] vas[%lu]: switch to vas %lx\n", proc_id, i, vas[i]);
+        err = vas_switch(vas[i]);
+        if (err_is_fail(err)) {
+            USER_PANIC_ERR(err, "failed to attach");
+        }
+        debug_printf("proc[%lu] vas[%lu]: [%p] *data = %016lx\n", proc_id, i, data, *data);
+    }
+
+    err = vas_switch(VAS_HANDLE_PROCESS);
+    if (err_is_fail(err)) {
+        USER_PANIC_ERR(err, "failed to switch to original");
+    }
+    debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
+
+
+    debug_printf("%lx \n", *((uint64_t*)0x80000000000));
+
+    *((uint64_t*)0x80000000000) = 0x1;
+
+
     debug_printf("[%lu] ### mapping frame vas[%lu]\n", proc_id, proc_id);
     err = vas_map(vas[proc_id], &buf1, frame, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
     if(err_is_fail(err)) {
@@ -130,67 +199,6 @@ int main(int argc, char *argv[])
 
     memset(buf1, proc_id + 1, BASE_PAGE_SIZE);
     memset(buf2, proc_id + 1, BASE_PAGE_SIZE);
-
-    err = oct_barrier_leave(record);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "oct barrier leave failed");
-    }
-
-    debug_printf("switching back go original address space\n");
-    err = vas_switch(VAS_HANDLE_PROCESS);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to switch to original");
-    }
-    uint64_t *data = buf1;
-    debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
-
-
-
-    for (size_t i = 0; i < proc_total; ++i) {
-        debug_printf("proc[%lu] vas[%lu]: switch to vas %lx\n", proc_id, i, vas[i]);
-        err = vas_switch(vas[i]);
-        if (err_is_fail(err)) {
-            USER_PANIC_ERR(err, "failed to attach");
-        }
-        debug_printf("proc[%lu] vas[%lu]: [%p] *data = %016lx\n", proc_id, i, data, *data);
-    }
-
-    err = vas_switch(VAS_HANDLE_PROCESS);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to switch to original");
-    }
-    debug_printf("[%lu] orig: [%p] *data = %016lx\n", proc_id, data, *data);
-
-    /* segment test */
-    debug_printf("## VAS SEGMENT TEST\n");
-
-#define VAS_TEST_NUM_SEG 4
-
-    vas_seg_handle_t seg[VAS_TEST_NUM_SEG];
-    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
-        snprintf(name, 32, "/seg/test/" "%u", i);
-        err = vas_seg_alloc(name, 0, LARGE_PAGE_SIZE, 0x80000000000 + 2*i*LARGE_PAGE_SIZE, VAS_FLAGS_PERM_READ, &seg[i]);
-        if (err_is_fail(err)) {
-            USER_PANIC_ERR(err, "failed to create segment");
-        }
-    }
-
-    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
-        err = vas_seg_attach(vas[0], seg[i], VAS_FLAGS_PERM_READ);
-        if (err_is_fail(err)) {
-            USER_PANIC_ERR(err, "failed to switch to original");
-        }
-    }
-
-    err = vas_switch(vas[0]);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "failed to switch to original");
-    }
-
-    debug_printf("%lx \n", *((uint64_t*)0x80000000000));
-
-    *((uint64_t*)0x80000000000) = 0x1;
-
 
     debug_printf("## VAS TEST TERMINATED\n");
 
