@@ -238,14 +238,14 @@ static struct sysret handle_inherit(struct capability *dest,
     capaddr_t source_cptr   = args[0];
     int       source_vbits  = args[1];
     uint64_t  start         = args[2];
-    uint64_t  end           = args[3];
+    uint64_t  num           = args[3];
 
-    if (start >= 512 || end >= 512) {
-        return SYSRET(SYS_ERR_SLOTS_INVALID);
+    if (num == 0) {
+        return SYSRET(SYS_ERR_OK);
     }
 
-    if (start > end) {
-        return SYSRET(SYS_ERR_OK);
+    if ((start + num)  > 512) {
+        return SYSRET(SYS_ERR_SLOTS_INVALID);
     }
 
     struct capability *root = &dcb_current->cspace.cap;
@@ -284,10 +284,10 @@ static struct sysret handle_inherit(struct capability *dest,
             break;
     }
 
-    uint64_t *dst_entry = (uint64_t *)local_phys_to_mem(dst_addr);
-    uint64_t *src_entry = (uint64_t *)local_phys_to_mem(src_addr);
+    uint64_t *dst_entry = ((uint64_t *)local_phys_to_mem(dst_addr)) + start;
+    uint64_t *src_entry = ((uint64_t *)local_phys_to_mem(src_addr)) + start;
 
-    for (uint64_t i = start; i <= end; ++i) {
+    for (uint64_t i = i; i < num; ++i) {
         dst_entry[i] = src_entry[i];
     }
 
@@ -1121,14 +1121,17 @@ static invocation_handler_t invocations[ObjType_Num][CAP_MAX_CMD] = {
     [ObjType_VNode_x86_64_pdpt] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
+        [VNodeCmd_Inherit] = handle_inherit,
     },
     [ObjType_VNode_x86_64_pdir] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
+        [VNodeCmd_Inherit] = handle_inherit,
     },
     [ObjType_VNode_x86_64_ptable] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
+        [VNodeCmd_Inherit] = handle_inherit,
     },
     [ObjType_Kernel] = {
         [KernelCmd_Get_core_id]  = monitor_get_core_id,

@@ -214,7 +214,7 @@ errval_t vas_client_seg_unmap(vas_id_t id, lvaddr_t vaddr)
 }
 
 
-errval_t vas_client_seg_create(struct vas_seg *seg)
+errval_t vas_client_seg_create(struct vas_segment *seg)
 {
     if (vas_service_client == NULL) {
         return VAS_ERR_SERVICE_NOT_ENABLED;
@@ -232,7 +232,7 @@ errval_t vas_client_seg_create(struct vas_seg *seg)
     return msgerr;
 }
 
-errval_t vas_client_seg_lookup(struct vas_seg *seg)
+errval_t vas_client_seg_lookup(struct vas_segment *seg)
 {
     if (vas_service_client == NULL) {
         return VAS_ERR_SERVICE_NOT_ENABLED;

@@ -84,7 +84,8 @@ errval_t vas_create(const char* name, vas_flags_t perm, vas_handle_t *ret_vas)
     if (perm & VAS_FLAGS_PERM_LOCAL) {
         VAS_DEBUG_LIBVAS("creating local vas '%s'\n", name);
         /* create a new VSPACE */
-        err = vas_vspace_init(vas);
+        USER_PANIC("NOT SUPPORTED!");
+        //err = vas_vspace_init(vas);
         if (err_is_fail(err)) {
             free(vas);
             return err;
@@ -361,7 +362,7 @@ errval_t vas_map(vas_handle_t vh, void **retaddr, struct capref frame, size_t si
     if (!(vas->perms & VAS_FLAGS_PERM_LOCAL)) {
         return vas_client_seg_map(vas->id, frame, size, flags, (lvaddr_t *) retaddr);
     } else {
-        return vas_vspace_map_one_frame(vas, retaddr, frame, size, flags);
+        return VAS_ERR_NOT_SUPPORTED;//vas_vspace_map_one_frame(vas, retaddr, frame, size, flags);
     }
 }
 

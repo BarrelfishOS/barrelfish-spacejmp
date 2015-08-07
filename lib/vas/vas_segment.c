@@ -34,12 +34,12 @@
  * =============================================================================
  */
 
-static inline struct vas_seg *vas_seg_get_pointer(vas_seg_handle_t sh)
+static inline struct vas_segment *vas_seg_get_pointer(vas_seg_handle_t sh)
 {
-    return (struct vas_seg*)sh;
+    return (struct vas_segment*)sh;
 }
 
-static inline vas_seg_handle_t vas_seg_get_handle(struct vas_seg *seg)
+static inline vas_seg_handle_t vas_seg_get_handle(struct vas_segment *seg)
 {
     return (vas_seg_handle_t)seg;
 }
@@ -72,7 +72,7 @@ static inline bool is_same_pml4(genvaddr_t va1, genvaddr_t va2)
     return X86_64_PML4_BASE(va1) == X86_64_PML4_BASE(va2-1);
 }
 
-static errval_t vas_segment_verify_alignment(struct vas_seg *seg,
+static errval_t vas_segment_verify_alignment(struct vas_segment *seg,
                                              lvaddr_t alignment)
 {
 
@@ -179,7 +179,7 @@ static errval_t vas_segment_map_frames(struct capref root, struct capref frames,
 static cslot_t vas_segment_num_slots(enum objtype type,  size_t length,
                                      size_t pagesize)
 {
-    cslot_t num_slots = 1 + ((length/pagesize)/512);
+    cslot_t num_slots = 2 + ((length/pagesize)/512);
 
     VAS_DEBUG_SEG("%s calculating slots %lu bytes, pagesize = %lu\n",
                   __FUNCTION__, length, pagesize);
@@ -212,38 +212,40 @@ static cslot_t vas_segment_num_slots(enum objtype type,  size_t length,
 
 
 
-errval_t vas_segment_create(struct vas_seg *seg)
+errval_t vas_segment_create(struct vas_seg *segment)
 {
-
-    VAS_DEBUG_SEG("%s\n", __FUNCTION__);
-
     errval_t err = SYS_ERR_OK;
+
+    struct vas_segment *seg = (struct vas_segment *)segment;
+
+
+    VAS_DEBUG_SEG("%s vaddr=0x%lx, size=%lu\n", __FUNCTION__, seg->vaddr, seg->length);
 
     /* work out root level */
 
     if (seg->length <= X86_64_LARGE_PAGE_SIZE) {
-        seg->roottype = ObjType_VNode_x86_64_ptable;
+        segment->roottype = ObjType_VNode_x86_64_ptable;
         /* check if in the same pdir slot */
         if (!is_same_pdir(seg->vaddr, seg->vaddr+seg->length)) {
             return LIB_ERR_VSPACE_REGION_OVERLAP;
         }
         err = vas_segment_verify_alignment(seg, BASE_PAGE_SIZE);
     } else if (seg->length <= X86_64_HUGE_PAGE_SIZE) {
-        seg->roottype = ObjType_VNode_x86_64_pdir;
+        segment->roottype = ObjType_VNode_x86_64_pdir;
         /* check if in the same pdpt slot */
         if (!is_same_pdpt(seg->vaddr, seg->vaddr+seg->length)) {
             return LIB_ERR_VSPACE_REGION_OVERLAP;
         }
         err = vas_segment_verify_alignment(seg, LARGE_PAGE_SIZE);
     } else if (seg->length <= 512UL * X86_64_HUGE_PAGE_SIZE){
-        seg->roottype = ObjType_VNode_x86_64_pdpt;
+        segment->roottype = ObjType_VNode_x86_64_pdpt;
         /* check if in the same pml4 slot */
         if (!is_same_pml4(seg->vaddr, seg->vaddr+seg->length)) {
             return LIB_ERR_VSPACE_REGION_OVERLAP;
         }
         err = vas_segment_verify_alignment(seg, HUGE_PAGE_SIZE);
     } else {
-        seg->roottype = ObjType_VNode_x86_64_pml4;
+        segment->roottype = ObjType_VNode_x86_64_pml4;
         err = vas_segment_verify_alignment(seg, 512UL*HUGE_PAGE_SIZE);
     }
 
@@ -273,31 +275,34 @@ errval_t vas_segment_create(struct vas_seg *seg)
         pagesize_bits = LARGE_PAGE_BITS;
     }
 
-    cslot_t num_slots = vas_segment_num_slots(seg->roottype, seg->length, pagesize);
+    cslot_t num_slots = vas_segment_num_slots(segment->roottype, seg->length, pagesize);
 
 
     VAS_DEBUG_SEG("%s creating cnode with %u slots\n", __FUNCTION__,
                          num_slots);
 
-    err = cnode_create(&seg->segcn_cap, &seg->segcn, num_slots, NULL);
+    err = cnode_create(&segment->segcn_cap, &segment->segcn, num_slots, NULL);
     if (err_is_fail(err)) {
         return err_push(err, LIB_ERR_CNODE_CREATE);
     }
 
-    struct capref dest = {.cnode = seg->segcn, .slot = 0};
+    struct capref dest = {.cnode = segment->segcn, .slot = 0};
 
 
     /* we need one subtree root table */
     VAS_DEBUG_SEG("%s creating subtree vroot of type %u\n", __FUNCTION__,
-                   seg->roottype);
-    err = vas_seg_create_ptables(seg->roottype, 1, dest);
+                   segment->roottype);
+    err = vas_seg_create_ptables(segment->roottype, 1, dest);
     if (err_is_fail(err)) {
         return err_push(err, LIB_ERR_VNODE_CREATE);
     }
+
+    segment->root = dest;
+
     dest.slot += 1;
 
 
-    switch(seg->roottype) {
+    switch(segment->roottype) {
         case ObjType_VNode_x86_64_pml4 :
             /* we have multiple pml4 entries which we span */
             num_slots = (seg->length / (512UL*HUGE_PAGE_SIZE));
@@ -344,7 +349,7 @@ errval_t vas_segment_create(struct vas_seg *seg)
 
     VAS_DEBUG_SEG("%s copying caps\n", __FUNCTION__);
 
-    cslot_t num_leave_pt = (seg->length / pagesize) / 512;
+    cslot_t num_leave_pt = 1 + ((seg->length / pagesize) / 512);
 
     for (cslot_t i = 0; i < num_leave_pt; ++i) {
         VAS_DEBUG_SEG("%s copying caps into slot %u\n", __FUNCTION__, dest.slot);
@@ -357,14 +362,14 @@ errval_t vas_segment_create(struct vas_seg *seg)
 
 
     dest.slot = 0;
-    struct capref src = {.cnode = seg->segcn, .slot = 1};
+    struct capref src = {.cnode = segment->segcn, .slot = 1};
 
-    switch (seg->roottype) {
+    switch (segment->roottype) {
         case ObjType_VNode_x86_64_pml4:
             /* we have multiple pml4 entries which we span */
             num_slots = (seg->length / (512UL * HUGE_PAGE_SIZE));
-            seg->slot_num = num_slots;
-            seg->slot_start = X86_64_PML4_BASE(seg->vaddr);
+            segment->slot_num = num_slots;
+            segment->slot_start = X86_64_PML4_BASE(seg->vaddr);
 
             VAS_DEBUG_SEG("%s mapping pml4[%lu] -> %u pdpt\n", __FUNCTION__,
                           X86_64_PML4_BASE(seg->vaddr), num_slots);
@@ -381,8 +386,8 @@ errval_t vas_segment_create(struct vas_seg *seg)
         case ObjType_VNode_x86_64_pdpt:
             /* we have multiple full pdirs that we span */
             num_slots = (seg->length / (HUGE_PAGE_SIZE));
-            seg->slot_num = num_slots;
-            seg->slot_start = X86_64_PDPT_BASE(seg->vaddr);
+            segment->slot_num = num_slots;
+            segment->slot_start = X86_64_PDPT_BASE(seg->vaddr);
             if (pagesize < HUGE_PAGE_SIZE) {
                 VAS_DEBUG_SEG("%s mapping pdpt[%lu] -> %u pdir dst=%u, src=%u\n", __FUNCTION__,
                               X86_64_PDPT_BASE(seg->vaddr), num_slots, dest.slot, src.slot);
@@ -399,8 +404,8 @@ errval_t vas_segment_create(struct vas_seg *seg)
             break;
         case ObjType_VNode_x86_64_pdir:
             num_slots = (seg->length / (LARGE_PAGE_SIZE));
-            seg->slot_num = num_slots;
-            seg->slot_start = X86_64_PDIR_BASE(seg->vaddr);
+            segment->slot_num = num_slots;
+            segment->slot_start = X86_64_PDIR_BASE(seg->vaddr);
             if (pagesize < LARGE_PAGE_SIZE) {
                 VAS_DEBUG_SEG("%s mapping pdir[%lu] -> %u ptables, dst=%u, src=%u\n",
                               __FUNCTION__, X86_64_PDIR_BASE(seg->vaddr),
@@ -416,8 +421,8 @@ errval_t vas_segment_create(struct vas_seg *seg)
             }
             break;
         case ObjType_VNode_x86_64_ptable:
-            seg->slot_num = (seg->length / BASE_PAGE_SIZE);
-            seg->slot_start = X86_64_PTABLE_BASE(seg->vaddr);
+            segment->slot_num = (seg->length / BASE_PAGE_SIZE);
+            segment->slot_start = X86_64_PTABLE_BASE(seg->vaddr);
             break;
         default:
             USER_PANIC("should not be reached")
@@ -426,7 +431,7 @@ errval_t vas_segment_create(struct vas_seg *seg)
     }
 
     /* now we can start with mapping other levels */
-    switch (seg->roottype) {
+    switch (segment->roottype) {
         case ObjType_VNode_x86_64_pml4:
             USER_PANIC("NOT YET IMPLEMENTED");
             if (pagesize == HUGE_PAGE_SIZE) {
@@ -512,7 +517,7 @@ errval_t vas_segment_create(struct vas_seg *seg)
 
 errval_t vas_seg_alloc(const char *name, vas_seg_type_t type, size_t length,
                        lvaddr_t vaddr,  vas_flags_t flags,
-                       vas_seg_id_t *ret_seg)
+                       vas_seg_handle_t *ret_seg)
 {
     errval_t err;
     struct capref frame;
@@ -537,7 +542,7 @@ errval_t vas_seg_alloc(const char *name, vas_seg_type_t type, size_t length,
 
 errval_t vas_seg_create(const char *name, vas_seg_type_t type, size_t length,
                        lvaddr_t vaddr, struct capref frame, vas_flags_t flags,
-                       vas_seg_id_t *ret_seg)
+                       vas_seg_handle_t *ret_seg)
 {
     errval_t err;
 
@@ -556,7 +561,7 @@ errval_t vas_seg_create(const char *name, vas_seg_type_t type, size_t length,
         return -1;
     }
 
-    struct vas_seg *seg = calloc(1, sizeof(struct vas_seg));
+    struct vas_segment *seg = calloc(1, sizeof(struct vas_seg));
     if (seg == NULL) {
         return LIB_ERR_MALLOC_FAIL;
     }
@@ -583,7 +588,7 @@ errval_t vas_seg_free(vas_seg_handle_t sh)
 {
     errval_t err;
 
-    struct vas_seg *seg = vas_seg_get_pointer(sh);
+    struct vas_segment *seg = vas_seg_get_pointer(sh);
 
     err = vas_client_seg_delete(seg->id);
     if (err_is_fail(err)) {
@@ -599,7 +604,7 @@ errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg)
 {
     errval_t err;
 
-    struct vas_seg *seg = calloc(1, sizeof(struct vas_seg));
+    struct vas_segment *seg = calloc(1, sizeof(struct vas_segment));
     if (seg == NULL) {
         return LIB_ERR_MALLOC_FAIL;
     }
@@ -620,7 +625,7 @@ errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg)
 
 errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh, vas_flags_t flags)
 {
-    struct vas_seg *seg = vas_seg_get_pointer(sh);
+    struct vas_segment *seg = vas_seg_get_pointer(sh);
     struct vas *vas = vas_get_vas_pointer(vh);
 
     return vas_client_seg_attach(vas->id, seg->id, flags);
@@ -628,7 +633,7 @@ errval_t vas_seg_attach(vas_handle_t vh, vas_seg_handle_t sh, vas_flags_t flags)
 
 errval_t vas_seg_detach(vas_handle_t vh, vas_seg_handle_t sh)
 {
-    struct vas_seg *seg = vas_seg_get_pointer(sh);
+    struct vas_segment *seg = vas_seg_get_pointer(sh);
     struct vas *vas = vas_get_vas_pointer(vh);
 
     return vas_client_seg_detach(vas->id, seg->id);

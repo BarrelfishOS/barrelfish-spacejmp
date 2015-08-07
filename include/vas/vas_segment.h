@@ -34,14 +34,16 @@ typedef uintptr_t vas_seg_handle_t;
  * kernel should / pick the offset to use. It is an addresss 'too
  * large' to use as a valid value anyway.
  */
-#define VAS_SEG_VADDR_MAX   (0UL-1)
+#define VAS_SEG_VADDR_MAX   (384UL * 512UL * HUGE_PAGE_SIZE)
 
 /**
  * Represents the value of vaddr to seg_alloc which indicates the
  * kernel should / pick the offset to use. It is an addresss 'too
  * large' to use as a valid value anyway.
  */
-#define VAS_SEG_VADDR_MAX   (0UL-1)
+#define VAS_SEG_VADDR_MIN   ((128UL * 512UL * HUGE_PAGE_SIZE))
+
+
 
 ///< maximum length of a segment
 #define VAS_SEG_MAX_LEN (1UL<<40)
@@ -63,10 +65,10 @@ typedef enum vas_seg_type
 
 errval_t vas_seg_alloc(const char *name, vas_seg_type_t type, size_t length,
                        lvaddr_t vaddr,  vas_flags_t flags,
-                       vas_seg_id_t *ret_seg);
+                       vas_seg_handle_t *ret_seg);
 errval_t vas_seg_create(const char *name, vas_seg_type_t type, size_t length,
                        lvaddr_t vaddr, struct capref frame, vas_flags_t flags,
-                       vas_seg_id_t *ret_seg);
+                       vas_seg_handle_t *ret_seg);
 errval_t vas_seg_free   (vas_seg_handle_t seg);
 errval_t vas_seg_lookup(const char *name, vas_seg_handle_t *ret_seg);
 

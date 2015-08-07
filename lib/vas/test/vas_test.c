@@ -108,10 +108,17 @@ int main(int argc, char *argv[])
 
 #define VAS_TEST_NUM_SEG 4
 
+#define VAS_VSPACE_PML4_SLOTS 256UL
+#define VAS_VSPACE_PML4_SLOT_MAX 500UL
+#define VAS_VSPACE_PML4_SLOT_MIN (VAS_VSPACE_PML4_SLOT_MAX - VAS_VSPACE_PML4_SLOTS)
+#define BASE_ADDR (VAS_VSPACE_PML4_SLOT_MIN * 512UL * HUGE_PAGE_SIZE)
+
+    void *bufs[VAS_TEST_NUM_SEG];
     vas_seg_handle_t seg[VAS_TEST_NUM_SEG];
     for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
         snprintf(name, 32, "/seg/test/" "%u", i);
-        err = vas_seg_alloc(name, 0, LARGE_PAGE_SIZE + 2*i*LARGE_PAGE_SIZE, 0x80000000000 + 2*i*LARGE_PAGE_SIZE, VAS_FLAGS_PERM_READ, &seg[i]);
+        bufs[i] = (void *)(BASE_ADDR + 16*i*LARGE_PAGE_SIZE);
+        err = vas_seg_alloc(name, 0, LARGE_PAGE_SIZE + 2*i*LARGE_PAGE_SIZE, (lvaddr_t)bufs[i] , VAS_FLAGS_PERM_READ, &seg[i]);
         if (err_is_fail(err)) {
             USER_PANIC_ERR(err, "failed to create segment");
         }
@@ -129,6 +136,11 @@ int main(int argc, char *argv[])
         USER_PANIC_ERR(err, "failed to switch to original");
     }
 
+    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
+        uint64_t *data = bufs[i];
+        debug_printf("[%lu] seg[%i]: [%p] *data = %016lx\n", proc_id, i, data, *data);
+    }
+
 
     err = oct_barrier_leave(record);
     if (err_is_fail(err)) {
@@ -140,6 +152,12 @@ int main(int argc, char *argv[])
     if (err_is_fail(err)) {
         USER_PANIC_ERR(err, "failed to switch to original");
     }
+
+    debug_printf("about to page fault!\n");
+    for (int i = 0; i < VAS_TEST_NUM_SEG; ++i) {
+            uint64_t *data = bufs[i];
+            debug_printf("[%lu] seg[%i]: [%p] *data = %016lx\n", proc_id, i, data, *data);
+        }
 
     debug_printf("## VAS TEST TERMINATED\n");
 

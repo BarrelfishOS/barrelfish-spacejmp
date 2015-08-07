@@ -14,12 +14,16 @@ struct vas_segment;
 struct vas;
 
 // Size of virtual region mapped by a single PML4 entry
-#define PML4_MAPPING_SIZE ((genvaddr_t)512*512*512*BASE_PAGE_SIZE)
+#define PML4_MAPPING_SIZE (512UL*HUGE_PAGE_SIZE)
 
 
 #define VAS_VSPACE_PML4_SLOTS 256
-#define VAS_VSPACE_PML4_SLOT_MAX 500
-#define VAS_VSPACE_PML4_SLOT_MIN VAS_VSPACE_PML4_SLOT_MAX - VAS_VSPACE_PML4_SLOTS
+#define VAS_VSPACE_PML4_SLOT_MAX (VAS_SEG_VADDR_MAX / PML4_MAPPING_SIZE)
+#define VAS_VSPACE_PML4_SLOT_MIN (VAS_SEG_VADDR_MIN / PML4_MAPPING_SIZE)
+
+STATIC_ASSERT((VAS_VSPACE_PML4_SLOT_MAX - VAS_VSPACE_PML4_SLOT_MIN) <= VAS_VSPACE_PML4_SLOTS,
+              "number of PML4 slots must not exceed 256");
+
 ///<
 #define VAS_VSPACE_MIN_MAPPABLE (PML4_MAPPING_SIZE * (VAS_VSPACE_PML4_SLOT_MIN))
 
@@ -33,12 +37,14 @@ struct vas;
  *
  */
 
+errval_t vas_vspace_init_slot_allocator(void);
 
-errval_t vas_vspace_init(struct vas *vas);
+errval_t vas_vspace_init(struct vas_vspace *vspace);
 errval_t vas_vspace_create_vroot(struct capref vroot);
 
-errval_t vas_vspace_attach_segment(struct vas *vas, struct vas_seg *seg);
-errval_t vas_vspace_detach_segment(struct vas *vas, struct vas_seg *seg);
+errval_t vas_vspace_attach_segment(struct vas_vspace *vspace, struct vas_seg *segment,
+                                   struct vas_vregion *vreg);
+errval_t vas_vspace_detach_segment(struct vas_vspace *vas, struct vas_seg *seg);
 
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
@@ -96,9 +102,9 @@ static inline errval_t vas_vspace_inherit_heap(struct vas *vas)
  */
 static inline errval_t vas_vspace_inherit_regions(struct vas *vas,
                                                   struct capref vroot,
-                                                  uint32_t start, uint32_t end)
+                                                  uint32_t start, uint32_t num)
 {
-    return vnode_inherit(vroot, vas->vroot, start, end);
+    return vnode_inherit(vroot, vas->vroot, start, num);
 }
 
 #endif /* __VAS_VSPACE_H_ */
