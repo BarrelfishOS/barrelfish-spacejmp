@@ -12,6 +12,7 @@
 
 #define VAS_DEBUG_GLOBAL_ENABLE 1
 #define VAS_DEBUG_VAS_ENABLE 1
+#define VAS_DEBUG_SEGMENT_ENABLE 1
 #define VAS_DEBUG_VSPACE_ENABLE 1
 #define VAS_DEBUG_CLIENT_ENABLE 1
 
@@ -30,6 +31,12 @@
 #define VAS_DEBUG_LIBVAS(x...) VAS_DEBUG_PRINTF("[libvas] "x)
 #else
 #define VAS_DEBUG_LIBVAS(x...)
+#endif
+
+#if VAS_DEBUG_SEGMENT_ENABLE
+#define VAS_DEBUG_SEG(x...) VAS_DEBUG_PRINTF("[segment] "x)
+#else
+#define VAS_DEBUG_SEGS(x...)
 #endif
 
 #if VAS_DEBUG_VSPACE_ENABLE
