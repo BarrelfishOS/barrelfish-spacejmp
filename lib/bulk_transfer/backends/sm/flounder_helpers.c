@@ -15,6 +15,10 @@
 #include "bulk_sm_impl.h"
 #include "../../bulk_pool.h"
 
+#define USE_LOCKS 0
+
+struct msg_data *msg_data_cache;
+
 #if 0
 #define BULK_FH_MSG(fmt, msg...) debug_printf("[%03u: "fmt"]\n", \
         disp_get_domain_id(), msg)
@@ -43,8 +47,9 @@ static void bulk_sm_flounder_resend_handler(void *a)
     errval_t err = SYS_ERR_OK;
 
     // <-- BEGIN LOCK
+#if USE_LOCKS
     thread_mutex_lock(&data->resend_lock);
-
+#endif
     // dequeue first element
     struct bulk_sm_resend_item *item = data->resend_closure;
 
@@ -65,13 +70,13 @@ static void bulk_sm_flounder_resend_handler(void *a)
     }
     if (err_is_ok(err)){
         data->resend_closure = item->next;//remove item from list
-        free(item);
+        free_bulk_sm_resend_item(item);
     } else if (err_no(err) == FLOUNDER_ERR_TX_BUSY){
         //handler failed, keep item in front of list (to preserve handler order)
     } else {
         DEBUG_ERR(err, "not trying to resend\n");
         data->resend_closure = item->next;//remove item from list
-        free(item);
+        free_bulk_sm_resend_item(item);
     }
 
     // if more messages, reregister resend handler
@@ -84,9 +89,12 @@ static void bulk_sm_flounder_resend_handler(void *a)
             USER_PANIC_ERR(BULK_TRANSFER_SM_EXCLUSIVE_WS,
                     "bulk_sm_flounder_resend_msg_with_arg");
         }
+    } else {
+        data->resend_last = NULL;
     }
-
+#if USE_LOCKS
     thread_mutex_unlock(&data->resend_lock);
+#endif
     // --> END LOCK
 }
 
@@ -107,7 +115,9 @@ void bulk_sm_flounder_send_fifo_msg_with_arg(struct bulk_channel *channel,
     errval_t err = SYS_ERR_OK;
 
     // <-- BEGIN LOCK
+#if USE_LOCKS
     thread_mutex_lock(&data->resend_lock);
+#endif
     struct bulk_sm_resend_item *head = data->resend_closure;
 
     if (head == NULL) {
@@ -117,14 +127,14 @@ void bulk_sm_flounder_send_fifo_msg_with_arg(struct bulk_channel *channel,
 
     if (head != NULL || err_no(err) == FLOUNDER_ERR_TX_BUSY) {
         // insert continuation into waitlist
-        struct bulk_sm_resend_item *new_item = malloc(sizeof(*new_item));
+        struct bulk_sm_resend_item *new_item = alloc_bulk_sm_resend_item();
         assert(new_item);
         new_item->event = MKCLOSURE((void (*)(void*)) send_fn, arg);
         new_item->next  = NULL;
 
         if (head == NULL) {
             data->resend_closure = new_item;
-
+            data->resend_last = new_item;
             // queue was empty: register resend handler
             err = b->register_send(b, ws,
                     MKCONT(bulk_sm_flounder_resend_handler, channel));
@@ -135,8 +145,8 @@ void bulk_sm_flounder_send_fifo_msg_with_arg(struct bulk_channel *channel,
                         "bulk_sm_flounder_resend_msg_with_arg");
             }
         } else {
-            while (head->next) head = head->next;
-            head->next = new_item;
+            data->resend_last->next = new_item;
+            data->resend_last = new_item;
         }
         BULK_FH_MSG("Registered resend item  : %p(%p) -> %p",
                 new_item->event.handler, new_item->event.arg, new_item);
@@ -145,7 +155,9 @@ void bulk_sm_flounder_send_fifo_msg_with_arg(struct bulk_channel *channel,
         debug_printf("bulk_sm_flounder_send_fifo_msg: sending failed %s\n",
                         err_getstring(err));
     }
+#if USE_LOCKS
     thread_mutex_unlock(&data->resend_lock);
+#endif
     // --> END LOCK
 }
 

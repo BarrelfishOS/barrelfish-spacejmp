@@ -17,8 +17,10 @@
  * pending messages.
  */
 
-#include "pending_msg.h"
+#include "bulk_sm_impl.h"
 #include <stdlib.h>
+
+#define USE_LOCKS 0
 
 /**
  * dump pending message TID's for given channel
@@ -26,7 +28,9 @@
 static void pending_msg_dump(struct bulk_channel *channel)
 {
     assert(channel);
+#if USE_LOCKS
     thread_mutex_lock_nested(&CHANNEL_DATA(channel)->mutex);
+#endif
 
     struct bulk_sm_pending_msg *node = CHANNEL_DATA(channel)->root;
     debug_printf("Dumping pending message TID's for channel %p.\n", channel);
@@ -34,10 +38,13 @@ static void pending_msg_dump(struct bulk_channel *channel)
         debug_printf("  %u\n", node->tid);
         node = node->next;
     }
-
+#if USE_LOCKS
     thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+#endif
 }
 
+
+static uint32_t current_tid = 0;
 
 /**
  * add the data to the list of pending messages in channel
@@ -52,7 +59,7 @@ errval_t pending_msg_add(struct bulk_channel* channel,
                          union pending_msg_data data)
 {
     assert(channel);
-    struct bulk_sm_pending_msg *p = malloc(sizeof(struct bulk_sm_pending_msg));
+    struct bulk_sm_pending_msg *p =alloc_bulk_sm_pending_msg();
     assert(p);
 
     p->data = data;
@@ -60,21 +67,66 @@ errval_t pending_msg_add(struct bulk_channel* channel,
     p->previous = NULL;
 
     //seperate variable declared for easier compiler optimization
-    uint32_t thistid = (uint32_t) rand();
-    p->tid = thistid;
+    //uint32_t thistid = (uint32_t) rand();
+    p->tid = current_tid++;
 
-    // debug_printf("PENDING MSG: [new tid=%u]\n", thistid);
-    // debug_printf("before:\n");
+    // DEBUG_MALLOC("PENDING MSG: [new tid=%u]\n", thistid);
+    // DEBUG_MALLOC("before:\n");
     // pending_msg_dump(channel);
-
+#if USE_LOCKS
     thread_mutex_lock(&CHANNEL_DATA(channel)->mutex);
+#endif
+
     struct bulk_sm_pending_msg *node = CHANNEL_DATA(channel)->root;
 
+    if (node == NULL) {
+        CHANNEL_DATA(channel)->root = p;
+        *tid = p->tid;
+#if USE_LOCKS
+        thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+#endif
+        // DEBUG_MALLOC("after:\n");
+        // pending_msg_dump(channel);
+        return SYS_ERR_OK;
+    }
+
+    /* add it to the end */
+    if (node->previous == NULL) {
+        /* only one in the setting */
+        node->next = p;
+        node->previous = p;
+        p->previous = node;
+        p->next = node;
+        *tid = p->tid;
+#if USE_LOCKS
+        thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+#endif
+        // DEBUG_MALLOC("after:\n");
+        // pending_msg_dump(channel);
+        return SYS_ERR_OK;
+    }
+
+    struct bulk_sm_pending_msg *last = node->previous;
+    last->next = p;
+    p->previous = last;
+    p->next = node;
+    node->previous = p;
+
+    *tid = p->tid;
+    thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+    // DEBUG_MALLOC("after:\n");
+    // pending_msg_dump(channel);
+    return SYS_ERR_OK;
+
+
+    uint32_t thistid = 0;
     if (node == NULL){    //no other entries
         CHANNEL_DATA(channel)->root = p;
         *tid = thistid;
+#if USE_LOCKS
         thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
-        // debug_printf("after:\n");
+#endif
+        // DEBUG_MALLOC("after:\n");
         // pending_msg_dump(channel);
         return SYS_ERR_OK;
     }  else {
@@ -86,8 +138,10 @@ errval_t pending_msg_add(struct bulk_channel* channel,
                     p->previous = node;
                     node->next = p;
                     *tid = thistid;
-                    thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
-                    // debug_printf("after:\n");
+#if USE_LOCKS
+        thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+#endif
+                    // DEBUG_MALLOC("after:\n");
                     // pending_msg_dump(channel);
                     return SYS_ERR_OK;
                 }
@@ -105,8 +159,10 @@ errval_t pending_msg_add(struct bulk_channel* channel,
                 }
 
                 *tid = thistid;
-                thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
-                // debug_printf("after:\n");
+#if USE_LOCKS
+        thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+#endif
+                // DEBUG_MALLOC("after:\n");
                 // pending_msg_dump(channel);
                 return SYS_ERR_OK;
             } else {
@@ -114,8 +170,10 @@ errval_t pending_msg_add(struct bulk_channel* channel,
                 // thistid = (uint32_t) rand();
                 // p->tid = thistid;
                 // node = CHANNEL_DATA(channel)->root; // XXX WRONG. root could be NULL -- jb
+#if USE_LOCKS
                 thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
-                free(p);
+#endif
+                free_bulk_sm_pending_msg(p);
                 pending_msg_add(channel, tid, data); // XXX does copy of data recursively :-(
             }
         }
@@ -138,39 +196,62 @@ errval_t pending_msg_get(struct bulk_channel     *channel,
 {
     assert(channel);
 
+    #if USE_LOCKS
     thread_mutex_lock(&CHANNEL_DATA(channel)->mutex);
+#endif
+
     struct bulk_sm_pending_msg *p = CHANNEL_DATA(channel)->root;
 
-    // debug_printf("PENDING MSG: [remove tid=%u]\n", tid);
+    // DEBUG_MALLOC("PENDING MSG: [remove tid=%u]\n", tid);
     if (0) pending_msg_dump(channel); // defined but not used :-(
 
     while(p != NULL){
-        if (p->tid < tid){
+        if(p->tid == tid) {
+            break;
+        }
+
+        if (p->tid > tid) {
+            return BULK_TRANSFER_SM_NO_PENDING_MSG;
+        }
+
+        if (p->tid < tid) {
             p = p->next;
-        } else if (p->tid > tid) {
-            p = NULL;//abort early (list is sorted)
-        } else {
-            //tid matches -> found
-            *data = p->data;
+        }
 
-            if (do_remove) {
-                //remove from tree
-                if (p->next){
-                    p->next->previous = p->previous;
-                }
-                if (p->previous){
-                    p->previous->next = p->next;
-                } else {
-                    CHANNEL_DATA(channel)->root = p->next;
-                }
-
-                free(p);
-            }
-
-            thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
-            return SYS_ERR_OK;
+        if (p == CHANNEL_DATA(channel)->root) {
+            /* we've been once around the look */
+            return BULK_TRANSFER_SM_NO_PENDING_MSG;
         }
     }
-    thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
-    return BULK_TRANSFER_SM_NO_PENDING_MSG;
+    //tid matches -> found
+    *data = p->data;
+
+    if (do_remove) {
+
+        /* update root if needed */
+        if (CHANNEL_DATA(channel)->root == p) {
+            CHANNEL_DATA(channel)->root = p->next;
+        }
+
+        /* either 1 or two elements in the list */
+        if (p->next == p->previous) {
+            if (p->next) {
+                /* we have 2 elements */
+                CHANNEL_DATA(channel)->root->next = NULL;
+                CHANNEL_DATA(channel)->root->previous = NULL;
+            }
+        } else {
+            p->next->previous = p->previous;
+            p->previous->next = p->next;
+        }
+        p->previous = NULL;
+        p->next = NULL;
+
+        free_bulk_sm_pending_msg(p);
+    }
+
+#if USE_LOCKS
+        thread_mutex_unlock(&CHANNEL_DATA(channel)->mutex);
+#endif
+    return SYS_ERR_OK;
 }

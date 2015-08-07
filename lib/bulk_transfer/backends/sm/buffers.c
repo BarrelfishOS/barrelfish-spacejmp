@@ -14,7 +14,6 @@
 #include "../../bulk_pool.h"
 #include "../../bulk_buffer.h"
 #include "bulk_sm_impl.h"
-#include "pending_msg.h"
 
 #if 0
 #define BULK_DEBUG_PRINT(fmt, msg...) debug_printf(fmt, msg)
@@ -23,15 +22,9 @@
 #endif
 
 //the same values are necessary for move, pass and copy operations
-struct pass_data {
-    uint32_t tid;
-    void *meta;
-    size_t metasize;
-    struct capref cap;
-    struct bulk_buffer *buffer;
-    struct bulk_channel *channel;
-    bulk_ctrl_poolid_t poolid;
-};
+
+
+
 
 static errval_t bulk_sm_move_send_request(void *a)
 {
@@ -53,12 +46,12 @@ static errval_t bulk_sm_move_send_request(void *a)
     }
 
     if (err_is_ok(err)) {
-        free(d);
+        free_pass_data(d);
     } else if (err_no(err) != FLOUNDER_ERR_TX_BUSY) {
         //sending this message will never work, do not retry
         //notify user the same way as if the other side had an error
         bulk_sm_move_rx_response(b, err, d->tid);
-        free(d);
+        free_pass_data(d);
     }
     return err;
 }
@@ -88,7 +81,7 @@ errval_t bulk_sm_move(struct bulk_channel      *channel,
     }
 
     //send message
-    struct pass_data *d = malloc(sizeof(*d));
+    struct pass_data *d = alloc_pass_data();
     assert(d);
     d->tid = tid;
     d->meta = meta;
@@ -123,12 +116,12 @@ static errval_t bulk_sm_copy_send_request(void *a)
     }
 
     if (err_is_ok(err)) {
-        free(d);
+        free_pass_data(d);
     } else if (err_no(err) != FLOUNDER_ERR_TX_BUSY) {
         //sending this message will never work, do not retry
         //notify user the same way as if the other side had an error
         bulk_sm_copy_rx_response(b, err, d->tid);
-        free(d);
+        free_pass_data(d);
     }
     return err;
 }
@@ -158,7 +151,7 @@ errval_t bulk_sm_copy(struct bulk_channel      *channel,
     }
 
     //send message
-    struct pass_data *d = malloc(sizeof(*d));
+    struct pass_data *d = alloc_pass_data();
     assert(d);
     d->tid = tid;
     d->meta = meta;
@@ -187,12 +180,12 @@ static errval_t bulk_sm_release_send_request(void *a)
             d->poolid, buffer->bufferid, d->tid);
 
     if (err_is_ok(err)) {
-        free(d);
+        free_pass_data(d);
     } else if (err_no(err) != FLOUNDER_ERR_TX_BUSY) {
         //sending this message will never work, do not retry
         //notify user the same way as if the other side had an error
         bulk_sm_release_rx_response(b, err, d->tid);
-        free(d);
+        free_pass_data(d);
     }
     return err;
 }
@@ -214,7 +207,7 @@ errval_t bulk_sm_release(struct bulk_channel      *channel,
 
 
     //send message
-    struct pass_data *d = malloc(sizeof(*d));//could use smaller struct
+    struct pass_data *d = alloc_pass_data();
     assert(d);
     d->tid = tid;
     d->buffer = buffer;
@@ -247,12 +240,12 @@ static errval_t bulk_sm_pass_send_request(void *a)
     }
 
     if (err_is_ok(err)) {
-        free(d);
+        free_pass_data(d);
     } else if (err_no(err) != FLOUNDER_ERR_TX_BUSY) {
         //sending this message will never work, do not retry
         //notify user the same way as if the other side had an error
         bulk_sm_pass_rx_response(b, err, d->tid);
-        free(d);
+        free_pass_data(d);
     }
     return err;
 }
@@ -282,7 +275,7 @@ errval_t bulk_sm_pass(struct bulk_channel      *channel,
     }
 
 
-    struct pass_data *d = malloc(sizeof(*d));
+    struct pass_data *d = alloc_pass_data();
     assert(d);
     d->tid = tid;
     d->meta = meta;
@@ -301,13 +294,6 @@ errval_t bulk_sm_pass(struct bulk_channel      *channel,
 
 //--------------- flounder RPC handlers:
 
-//move, copy, pass and release replies all have the same format
-struct bulk_sm_reply_data {
-    struct bulk_channel      *channel;
-    struct event_closure     cb;
-    bulk_ctrl_error_t        error;
-    uint32_t                 tid;
-};
 
 static errval_t bulk_sm_move_send_reply(void *a)
 {
@@ -318,7 +304,7 @@ static errval_t bulk_sm_move_send_reply(void *a)
                                                     rdata->error, rdata->tid);
 
     if (err_is_ok(err)) {
-        free(rdata);
+        free_bulk_sm_reply_data(rdata);
     }
     return err;
 }
@@ -378,7 +364,7 @@ void bulk_sm_move_rx_call(
                 "bulk_sm_move_rx_call: reply to invalid move sent");
     }
 
-    struct bulk_sm_reply_data *rdata = malloc(sizeof(*rdata));
+    struct bulk_sm_reply_data *rdata = alloc_bulk_sm_reply_data();
     assert(rdata);
     rdata->channel = channel;
     rdata->cb      = txcont;
@@ -432,7 +418,7 @@ static errval_t bulk_sm_copy_send_reply(void *a)
                         b, rdata->cb, rdata->error, rdata->tid);
 
     if (err_is_ok(err)) {
-        free(rdata);
+        free_bulk_sm_reply_data(rdata);
     }
     return err;
 }
@@ -489,7 +475,7 @@ void bulk_sm_copy_rx_call(
                 "bulk_sm_copy_rx_call: reply to invalid copy sent");
     }
 
-    struct bulk_sm_reply_data *rdata = malloc(sizeof(*rdata));
+    struct bulk_sm_reply_data *rdata = alloc_bulk_sm_reply_data();
     assert(rdata);
     rdata->channel = channel;
     rdata->cb      = txcont;
@@ -544,7 +530,7 @@ static errval_t bulk_sm_pass_send_reply(void *a)
                                                rdata->error, rdata->tid);
 
     if (err_is_ok(err)) {
-        free(rdata);
+        free_bulk_sm_reply_data(rdata);
     }
     return err;
 }
@@ -606,7 +592,7 @@ void bulk_sm_pass_rx_call(
                 "bulk_sm_pass_rx_call: reply to invalid pass sent");
     }
 
-    struct bulk_sm_reply_data *rdata = malloc(sizeof(*rdata));
+    struct bulk_sm_reply_data *rdata = alloc_bulk_sm_reply_data();
     assert(rdata);
     rdata->channel = channel;
     rdata->cb      = txcont;
@@ -661,7 +647,7 @@ static errval_t bulk_sm_release_send_reply(void *a)
                                                     rdata->error, rdata->tid);
 
     if (err_is_fail(err)) {
-        free(rdata);
+        free_bulk_sm_reply_data(rdata);
     }
     return err;
 }
@@ -719,7 +705,7 @@ void bulk_sm_release_rx_call(
                 "bulk_sm_release_rx_call: reply to invalid release sent");
     }
 
-    struct bulk_sm_reply_data *rdata = malloc(sizeof(*rdata));
+    struct bulk_sm_reply_data *rdata = alloc_bulk_sm_reply_data();
     assert(rdata);
     rdata->channel = channel;
     rdata->cb      = txcont;

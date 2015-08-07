@@ -52,6 +52,7 @@ struct bulk_sm_impl_data {
     // resending of flounder messages
     struct thread_mutex         resend_lock;
     struct bulk_sm_resend_item  *resend_closure;
+    struct bulk_sm_resend_item  *resend_last;
 };
 
 // Shared memory implementation callbacks ---------------------------------

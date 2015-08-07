@@ -15,6 +15,8 @@
 #include <bulk_transfer/bulk_transfer.h>
 #include <bulk_transfer/bulk_sm.h>
 
+#include "pending_msg.h"
+
 #define VOID2CHANNEL(a)    ((struct bulk_channel*)(a))
 #define CHANNEL_EP(c)      ((struct bulk_sm_endpoint_descriptor*)(c)->ep)
 #define CHANNEL_DATA(c)    ((struct bulk_sm_impl_data*)(c)->impl_data)
@@ -233,5 +235,63 @@ void fill_pool_id_from_flounder(struct bulk_pool_id         *poolid,
  */
 void fill_pool_id_for_flounder(const struct bulk_pool_id    *poolid,
                                bulk_ctrl_poolid_t  *f_poolid);
+
+
+//move, copy, pass and release replies all have the same format
+struct bulk_sm_reply_data {
+    struct bulk_channel      *channel;
+    struct event_closure     cb;
+    bulk_ctrl_error_t        error;
+    uint32_t                 tid;
+};
+
+struct pass_data {
+    uint32_t tid;
+    void *meta;
+    size_t metasize;
+    struct capref cap;
+    struct bulk_buffer *buffer;
+    struct bulk_channel *channel;
+    bulk_ctrl_poolid_t poolid;
+};
+
+struct msg_data {
+    union {
+        struct pass_data pd;
+        struct bulk_sm_reply_data sm;
+        struct bulk_sm_resend_item ri;
+        struct bulk_sm_pending_msg pm;
+    };
+    struct msg_data *next;
+};
+
+
+extern struct msg_data *msg_data_cache;
+
+static inline struct msg_data *alloc_msg_data(void)
+{
+
+    if (msg_data_cache) {
+        struct msg_data *ret = msg_data_cache;
+        msg_data_cache = ret->next;
+        return ret;
+    }
+    return malloc(sizeof(struct msg_data));
+}
+
+static inline void free_msg_data(struct msg_data *pd)
+{
+    pd->next = msg_data_cache;
+    msg_data_cache = pd;
+}
+
+#define alloc_pass_data() (struct pass_data *)alloc_msg_data()
+#define free_pass_data(x) free_msg_data((struct msg_data *) x)
+#define alloc_bulk_sm_reply_data()  (struct bulk_sm_reply_data *)alloc_msg_data()
+#define free_bulk_sm_reply_data(x) free_msg_data((struct msg_data *) x)
+#define alloc_bulk_sm_resend_item()  (struct bulk_sm_resend_item *)alloc_msg_data()
+#define free_bulk_sm_resend_item(x) free_msg_data((struct msg_data *) x)
+#define alloc_bulk_sm_pending_msg()  (struct bulk_sm_pending_msg *)alloc_msg_data()
+#define free_bulk_sm_pending_msg(x) free_msg_data((struct msg_data *) x)
 
 #endif // BULK_SM_IMPL_H

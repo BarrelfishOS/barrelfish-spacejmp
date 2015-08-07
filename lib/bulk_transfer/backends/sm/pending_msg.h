@@ -22,7 +22,6 @@
 #define BULK_SM_PENDING_MSG_H
 
 #include <barrelfish/barrelfish.h>
-#include "bulk_sm_impl.h"
 
 //RPC-specific content
 struct pending_assign_pool {
@@ -62,7 +61,7 @@ union pending_msg_data {
 };
 
 
-struct bulk_sm_pending_msg{
+struct bulk_sm_pending_msg {
     uint32_t                        tid;        //key
     struct bulk_sm_pending_msg      *next;      //rest of list (bigger keys)
     struct bulk_sm_pending_msg      *previous;  //rest of list (smaller keys)
