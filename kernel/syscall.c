@@ -372,7 +372,7 @@ sys_map(struct capability *ptable, cslot_t slot, capaddr_t source_cptr,
             src_cte++;
         }
 
-        return SYSRET(SYS_ERR_VM_MAP_SIZE);
+        return SYSRET(SYS_ERR_OK);
     } else {
         /* Perform map */
         // XXX: this does not check if we do have CAPRIGHTS_READ_WRITE on
