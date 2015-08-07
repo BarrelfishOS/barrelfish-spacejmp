@@ -85,7 +85,6 @@ static errval_t vas_vspace_refill_slabs(struct slab_allocator *slabs)
 
 static uint16_t vas_vspace_tag_alloc = VAS_VSPACE_TAG_START;
 
-#if 0
 /**
  * \brief initializes the VSPACE structure of the VAS
  *
@@ -196,7 +195,7 @@ errval_t vas_vspace_init(struct vas *vas)
     cap_destroy(vas->pagecn_cap);
     return err;
 }
-#endif
+
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
                                   struct capref frame, size_t size,
@@ -351,108 +350,3 @@ errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
     return err;
 }
 
-
-
-
-#define VAS_VSPACE_CNODE_SLOTS_BITS 9
-#define VAS_VSPACE_CNODE_SLOTS (1 << VAS_VSPACE_CNODE_SLOTS_BITS)
-
-/**
- * \brief initializes the VSPACE structure of the VAS
- *
- * \param vas   the VAS to initialize
- *
- * \returns SYS_ERR_OK on sucecss
- *          errval on failure
- */
-errval_t vas_vspace_init(struct vas *vas)
-{
-    errval_t err;
-
-    VAS_DEBUG_VSPACE("initializing new vspace for vas @ %p\n", vas);
-
-    /* create a new page cn */
-    VAS_DEBUG_VSPACE("creating new pagecn cap\n");
-    err = cnode_create(&vas->pagecn_cap, &vas->pagecn, VAS_VSPACE_CNODE_SLOTS, NULL);
-    if (err_is_fail(err)) {
-        return err_push(err, SPAWN_ERR_CREATE_PAGECN);
-    }
-
-    /* create a new vroot */
-    VAS_DEBUG_VSPACE("creating vroot\n");
-    vas->vroot = (struct capref){.cnode = vas->pagecn, .slot = 0};
-    err = vas_vspace_create_vroot(vas->vroot);
-    if (err_is_fail(err)) {
-        goto out_err;
-    }
-
-    size_t num_bits = vnode_objbits(ObjType_VNode_x86_64_pdpt) + VAS_VSPACE_CNODE_SLOTS_BITS - 1;
-
-    VAS_DEBUG_VSPACE("allocating ram for pdir, size = %lu\n", (1UL << num_bits));
-    /* create pdpt */
-    struct capref ram;
-    err = ram_alloc(&ram, num_bits);
-    if (err_is_fail(err)) {
-        err = err_push(err, LIB_ERR_RAM_ALLOC);
-        goto out_err;
-    }
-
-    VAS_DEBUG_VSPACE("retyping into ObjType_VNode_x86_64_pdpt\n");
-    struct capref pdpt = (struct capref){.cnode = vas->pagecn, .slot = VAS_VSPACE_PML4_SLOT_MIN};
-
-    err = cap_retype(pdpt, ram, ObjType_VNode_x86_64_pdpt, num_bits);
-    if (err_is_fail(err)) {
-        err =  err_push(err, LIB_ERR_CAP_RETYPE);
-        goto out_err;
-    }
-
-    err = cap_destroy(ram);
-    if (err_is_fail(err)) {
-        err =  err_push(err, LIB_ERR_CAP_DESTROY);
-        goto out_err;
-    }
-
-    VAS_DEBUG_VSPACE("mapping pdpt into vroot\n");
-    pdpt.slot = VAS_VSPACE_PML4_SLOT_MIN;
-    err = vnode_map(vas->vroot, pdpt, VAS_VSPACE_PML4_SLOT_MIN, PTABLE_ACCESS_DEFAULT, 0, VAS_VSPACE_PML4_SLOTS);
-
-/*
-    for (int i = VAS_VSPACE_PML4_SLOT_MIN; i <  VAS_VSPACE_PML4_SLOT_MAX; ++i) {
-        pdpt.slot = i;
-
-        VAS_DEBUG_VSPACE("slot %i\n", i);
-
-        err = vnode_map(vas->vroot, pdpt, i, PTABLE_ACCESS_DEFAULT, 0, 1);
-        if (err_is_fail(err)) {
-            USER_PANIC_ERR(err, "vnode map failed");
-            goto out_err;
-        }
-    }
-*/
-
-    if (vas_vspace_tag_alloc < 0x1000) {
-        vas->tag = vas_vspace_tag_alloc++;
-    } else {
-        vas->tag = 0;
-        debug_printf("warning: out of tags for this vas!\n");
-    }
-
-
-    VAS_DEBUG_VSPACE("vspace initialized successfully\n");
-
-    return SYS_ERR_OK;
-
-    out_err :
-    cap_destroy(vas->pagecn_cap);
-    return err;
-}
-
-errval_t vas_vspace_map_segment(struct vas *vas, struct vas_segment *seg)
-{
-
-}
-
-errval_t vas_vspace_unmap_segment(struct vas *vas, struct vas_segment *seg)
-{
-
-}
