@@ -13,6 +13,7 @@
 
 #include <barrelfish/barrelfish.h>
 #include <vas/vas.h>
+#include <vas/vas_segment.h>
 #include <bench/bench.h>
 
 #define CHECK(v,str,expr) \
@@ -31,7 +32,7 @@
 
 //#define ITERATIONS 256ULL
 #define ITERATIONS 256ULL
-#define DRYRUNS 5
+#define DRYRUNS 6
 
 #if 0
 static void shuffle(size_t *array, size_t n) {
@@ -53,6 +54,7 @@ static void shuffle(size_t *array, size_t n) {
 static uint64_t micro_benchmarks(void) {
 
     vas_handle_t vas[ITERATIONS];
+    vas_seg_handle_t seg[ITERATIONS];
     errval_t r;
 
 
@@ -85,7 +87,6 @@ static uint64_t micro_benchmarks(void) {
         do {
             char str[10];
             snprintf(str, 10, "/vas/%u", iter);
-
             cycles_t t_start = bench_tsc();
             r = vas_create(str, 0, &vas[iter++]);
             cycles_t t_end = bench_tsc();
@@ -120,23 +121,28 @@ static uint64_t micro_benchmarks(void) {
         r = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
         EXPECT_SUCCESS(r, "frame alloc");
 
+        int iter = 0;
         bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
         EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+
         bench_ctl_dry_runs(bench_ctl, DRYRUNS);
         do {
-            void *addr;
+            lvaddr_t addr = (VAS_SEG_VADDR_MIN + iter * BASE_PAGE_SIZE);
+            char str[10];
+            snprintf(str, 10, "/seg/%u", iter);
             cycles_t t_start = bench_tsc();
-            r = vas_map(vas[0], &addr, frame, BASE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
+            r = vas_seg_alloc(str, VAS_SEG_TYPE_FIXED, BASE_PAGE_SIZE, addr,
+                              VREGION_FLAGS_READ_WRITE, &seg[iter++]);
             cycles_t t_end = bench_tsc();
             EXPECT_SUCCESS(r, "mapping in  vas");
             t_elapsed = bench_time_diff(t_start, t_end);
         } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
 
-        bench_ctl_dump_analysis(bench_ctl, 0, "vas_map", bench_tsc_per_us());
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_seg_alloc", bench_tsc_per_us());
         bench_ctl_destroy(bench_ctl);
     }
 
-
+#if 0
     {
         struct capref frame;
         r = frame_alloc(&frame, LARGE_PAGE_SIZE, NULL);
@@ -148,16 +154,39 @@ static uint64_t micro_benchmarks(void) {
         do {
             void *addr;
             cycles_t t_start = bench_tsc();
-            r = vas_map(vas[1], &addr, frame, LARGE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE | VREGION_FLAGS_LARGE);
+            r = vas_map(vas[0], &addr, frame, LARGE_PAGE_SIZE, VREGION_FLAGS_READ_WRITE);
             cycles_t t_end = bench_tsc();
-            EXPECT_SUCCESS(r, "mapping");
+            EXPECT_SUCCESS(r, "mapping in  vas");
             t_elapsed = bench_time_diff(t_start, t_end);
         } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
 
-        bench_ctl_dump_analysis(bench_ctl, 0, "vas_map_large", bench_tsc_per_us());
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_map", bench_tsc_per_us());
         bench_ctl_destroy(bench_ctl);
     }
+#endif
 
+
+    {
+        struct capref frame;
+        r = frame_alloc(&frame, BASE_PAGE_SIZE, NULL);
+        EXPECT_SUCCESS(r, "frame alloc");
+
+        int iter = 0;
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        do {
+            cycles_t t_start = bench_tsc();
+            r = vas_seg_attach(vas[0], seg[iter++], 0);
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "mapping in  vas");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "vas_seg_attach", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
+    }
 
     {
         bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, ITERATIONS);

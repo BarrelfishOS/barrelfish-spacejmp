@@ -29,12 +29,17 @@ static void ump_init_msg(struct bench_binding *b, coreid_t id)
 {
     static int count = 0;
 
-    array[count] = b;
-    experiment(count);
+    array[count++] = b;
 
-    count++;
+    if (count == 2) {
+        experiment(0);
+        printf("client done\n");
+        experiment(1);
+        printf("client done\n");
+    }
 
-    printf("client done\n");
+
+
 }
 
 static struct bench_rx_vtbl rx_vtbl = {
@@ -67,9 +72,12 @@ static void bind_cb(void *st, errval_t binderr, struct bench_binding *b)
         uint64_t reqsize = msg->data[0];
         uint64_t sent = 0;
         while(sent < reqsize) {
-            while(!(msg = ump_impl_get_next(send, &ctrl)));
-            if ((reqsize - sent) < sizeof(msg->data)) {
-                memcpy((void *)msg->data, buf + sent, reqsize - sent);
+            do {
+                msg = ump_impl_get_next(send, &ctrl);
+            } while(!msg);
+
+            if (reqsize < UMP_MSG_BYTES) {
+                memcpy((void *)msg->data, buf + sent, reqsize);
             } else {
                 memcpy((void *)msg->data, buf + sent, UMP_MSG_BYTES);
             }
@@ -129,6 +137,7 @@ int main(int argc, char *argv[])
         //err = spawn_program_on_all_cores(false, xargv[0], xargv, NULL,
         //                                 SPAWN_FLAGS_DEFAULT, NULL, &num_cores);
         err = spawn_program(my_core_id + 2, xargv[0], xargv, NULL,0, NULL);
+        err = spawn_program(my_core_id + 12, xargv[0], xargv, NULL,0, NULL);
 
         assert(err_is_ok(err));
 

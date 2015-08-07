@@ -17,7 +17,7 @@
 #include <bench/bench.h>
 #include "ump_bench.h"
 
-#define MAX_COUNT 1024
+#define MAX_COUNT 256
 #define DRYRUNS 32
 
 static struct timestamps *timestamps;
@@ -31,7 +31,7 @@ static struct timestamps *timestamps;
 static void *buf;
 
 static void run(struct ump_chan_state *send, struct ump_chan_state *recv,
-                uint64_t msglen) {
+                uint64_t msglen, coreid_t core) {
 
     cycles_t t_elapsed;
 
@@ -51,10 +51,13 @@ static void run(struct ump_chan_state *send, struct ump_chan_state *recv,
         msg->data[0] = msglen;
         msg->header.control = ctrl;
         while(received < msglen) {
-            while (!(msg = ump_impl_recv(recv)));
-            if ((msglen - received) < sizeof(msg->data)) {
-                memcpy(buf_run + received, (void *)msg->data, msglen - received);
-            } else {
+            do{
+                msg = ump_impl_recv(recv);
+            } while (!msg);
+
+            if (msglen < UMP_MSG_BYTES) {
+                memcpy(buf_run + received, (void *)msg->data, msglen);
+            }else{
                 memcpy(buf_run + received, (void *)msg->data, UMP_MSG_BYTES);
             }
             received += UMP_MSG_BYTES;
@@ -64,7 +67,7 @@ static void run(struct ump_chan_state *send, struct ump_chan_state *recv,
     } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
 
     char label[32];
-    snprintf(label, 32, "get_ump(%lu)", msglen);
+    snprintf(label, 32, "%u: get_ump(%lu)", core, msglen);
 
     bench_ctl_dump_analysis(bench_ctl, 0, label, bench_tsc_per_us());
     bench_ctl_destroy(bench_ctl);
@@ -88,7 +91,7 @@ void experiment(coreid_t idx)
 
     /* Run experiment */
     for (int sz = 4; sz <= LARGE_PAGE_SIZE; sz <<= 1) {
-        run(send, recv, sz);
+        run(send, recv, sz, idx);
     }
     free(buf);
 
