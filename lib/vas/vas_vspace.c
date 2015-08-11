@@ -18,69 +18,6 @@
 #include <barrelfish/pmap_arch.h>
 #include <barrelfish_kpi/init.h>
 
-#ifdef VAS_CONFIG_MULTI_DOMAIN_META
-
-#define VAS_VSPACE_MAX_REGIONS 256
-
-#define VAS_VSPACE_BLOCK_SIZE \
-                (sizeof(struct vregion) + sizeof(struct memobj_one_frame))
-
-struct vspace_mmu_aware *vas_vspace_current_vm;
-
-static errval_t vas_vspace_mmu_aware_init(struct vas *vas, size_t size)
-{
-    errval_t err;
-
-    struct vspace_mmu_aware *state = &vas->vspace_vm;
-
-    state->size = size;
-    state->consumed = 0;
-    state->alignment = 0;
-    state->offset = 0;
-    state->mapoffset = 0;
-
-    size = ROUND_UP(size, BASE_PAGE_SIZE);
-    err = memobj_create_anon(&state->memobj, size, 0);
-    if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_MEMOBJ_CREATE_ANON);
-    }
-
-    err = vregion_map_aligned(&state->vregion, &vas->vspace_state.vspace,
-                              &state->memobj.m, 0, size,
-                              VREGION_FLAGS_READ_WRITE, state->alignment);
-    if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_VREGION_MAP);
-    }
-
-    return SYS_ERR_OK;
-}
-
-static errval_t vas_vspace_refill_slabs(struct slab_allocator *slabs)
-{
-    struct capref frame;
-    size_t size;
-    void *buf;
-    errval_t err;
-
-    err = slot_alloc(&frame);
-    if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_SLOT_ALLOC);
-    }
-
-    err = vspace_mmu_aware_map(vas_vspace_current_vm, frame, VAS_VSPACE_BLOCK_SIZE,
-                               &buf, &size);
-    if (err_is_fail(err)) {
-        return err_push(err, LIB_ERR_VSPACE_MMU_AWARE_MAP);
-    }
-
-    slab_grow(slabs, buf, size);
-
-    return SYS_ERR_OK;
-}
-
-#endif /* VAS_CONFIG_MULTI_DOMAIN_META */
-
-
 #define VAS_VSPACE_TAG_START 0x100
 
 static uint16_t vas_vspace_tag_alloc = VAS_VSPACE_TAG_START;
@@ -164,15 +101,6 @@ errval_t vas_vspace_init(struct vas *vas)
         goto out_err;
     }
 
-#ifdef VAS_CONFIG_MULTI_DOMAIN_META
-    VAS_DEBUG_VSPACE("initializing meta-storage\n");
-
-    err = vas_vspace_mmu_aware_init(vas, VAS_VSPACE_MAX_REGIONS * VAS_VSPACE_BLOCK_SIZE);
-    if (err_is_fail(err)) {
-        USER_PANIC_ERR(err, "vspace_mmu_aware_init for thread region failed\n");
-    }
-    slab_init(&vas->vspace_slabs, VAS_VSPACE_BLOCK_SIZE, vas_vspace_refill_slabs);
-#endif
     /*
      * XXX:
      *  - maybe reserve a region of memory for the vregion/memobjs
@@ -221,15 +149,7 @@ errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,
         alignment = BASE_PAGE_SIZE;
     }
 
-#ifdef VAS_CONFIG_MULTI_DOMAIN_META
-
-    void *space = slab_alloc(&vas->vspace_slabs);
-    if (!space) {
-        return LIB_ERR_MALLOC_FAIL;
-    }
-#else
     void *space = calloc(1, sizeof(struct vregion) + sizeof(struct memobj_one_frame));
-#endif
 
     vregion = space;
     memobj = space + sizeof(struct vregion);
@@ -301,15 +221,7 @@ errval_t vas_vspace_map_one_frame_fixed(struct vas *vas, lvaddr_t addr,
         }
     }
 
-#ifdef VAS_CONFIG_MULTI_DOMAIN_META
-
-    void *space = slab_alloc(&vas->vspace_slabs);
-    if (!space) {
-        return LIB_ERR_MALLOC_FAIL;
-    }
-#else
     void *space = calloc(1, sizeof(struct vregion) + sizeof(struct memobj_one_frame));
-#endif
 
     vregion = space;
     memobj = space + sizeof(struct vregion);
