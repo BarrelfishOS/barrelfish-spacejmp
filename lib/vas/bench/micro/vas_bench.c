@@ -30,6 +30,9 @@
     if (!expr) {USER_PANIC(str);}
 
 //#define ITERATIONS 256ULL
+#define ITERATIONS_SYSCALL 10000
+#define DRYRUNS_SYSCALL 100
+#define TOTALRUNS_SYSCALL (ITERATIONS_SYSCALL + DRYRUNS_SYSCALL)
 #define ITERATIONS 256ULL
 #define DRYRUNS 5
 
@@ -60,9 +63,26 @@ static uint64_t micro_benchmarks(void) {
     cycles_t t_elapsed;
 
     {
-        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, ITERATIONS);
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, TOTALRUNS_SYSCALL);
         EXPECT_NONNULL(bench_ctl, "bench ctl was null");
-        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS_SYSCALL);
+        do {
+
+            cycles_t t_start = bench_tsc();
+            r = sys_nop();
+            cycles_t t_end = bench_tsc();
+            EXPECT_SUCCESS(r, "nopsyscall");
+            t_elapsed = bench_time_diff(t_start, t_end);
+        } while(!bench_ctl_add_run(bench_ctl, &t_elapsed));
+
+        bench_ctl_dump_analysis(bench_ctl, 0, "nop_syscall", bench_tsc_per_us());
+        bench_ctl_destroy(bench_ctl);
+    }
+
+    {
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 1, TOTALRUNS_SYSCALL);
+        EXPECT_NONNULL(bench_ctl, "bench ctl was null");
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS_SYSCALL);
         do {
 
             cycles_t t_start = bench_tsc();
@@ -160,14 +180,13 @@ static uint64_t micro_benchmarks(void) {
 
 
     {
-        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, ITERATIONS);
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, TOTALRUNS_SYSCALL);
         EXPECT_NONNULL(bench_ctl, "bench ctl was null");
-        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
-        int iter = 0;
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS_SYSCALL);
         cycles_t t_elapsed2[2];
         do {
             cycles_t t_start = bench_tsc();
-            r = vas_switch(vas[iter++]);
+            r = vas_switch(vas[0]);
             cycles_t t_end = bench_tsc();
             EXPECT_SUCCESS(r, "creating vas");
             t_elapsed2[0] = bench_time_diff(t_start, t_end);
@@ -190,9 +209,9 @@ static uint64_t micro_benchmarks(void) {
 
 
     {
-        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, ITERATIONS);
+        bench_ctl_t *bench_ctl = bench_ctl_init(BENCH_MODE_FIXEDRUNS, 2, TOTALRUNS_SYSCALL);
         EXPECT_NONNULL(bench_ctl, "bench ctl was null");
-        bench_ctl_dry_runs(bench_ctl, DRYRUNS);
+        bench_ctl_dry_runs(bench_ctl, DRYRUNS_SYSCALL);
         cycles_t t_elapsed2[2];
         do {
             cycles_t t_start = bench_tsc();
