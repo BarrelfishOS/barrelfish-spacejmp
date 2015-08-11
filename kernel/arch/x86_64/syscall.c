@@ -241,7 +241,7 @@ static struct sysret handle_inherit(struct capability *dest,
     uint64_t  num           = args[3];
 
     if (num == 0) {
-        return SYSRET(SYS_ERR_OK);
+        return SYSRET(SYS_ERR_SLOTS_INVALID);
     }
 
     if ((start + num)  > 512) {
@@ -287,12 +287,56 @@ static struct sysret handle_inherit(struct capability *dest,
     uint64_t *dst_entry = ((uint64_t *)local_phys_to_mem(dst_addr)) + start;
     uint64_t *src_entry = ((uint64_t *)local_phys_to_mem(src_addr)) + start;
 
-    for (uint64_t i = i; i < num; ++i) {
+    for (uint64_t i = 0; i < num; ++i) {
         dst_entry[i] = src_entry[i];
     }
 
     return SYSRET(SYS_ERR_OK);
 }
+
+
+static struct sysret handle_clear(struct capability *dest,
+                                  int cmd, uintptr_t *args)
+{
+    uint64_t  start         = args[0];
+    uint64_t  num           = args[1];
+
+    if (num == 0) {
+        return SYSRET(SYS_ERR_SLOTS_INVALID);
+    }
+
+    if ((start + num)  > 512) {
+        return SYSRET(SYS_ERR_SLOTS_INVALID);
+    }
+
+    lvaddr_t dst_addr;
+    switch(dest->type) {
+        case ObjType_VNode_x86_64_ptable :
+            dst_addr = dest->u.vnode_x86_64_ptable.base;
+            break;
+        case ObjType_VNode_x86_64_pdir :
+            dst_addr = dest->u.vnode_x86_64_pdir.base;
+            break;
+        case ObjType_VNode_x86_64_pdpt :
+            dst_addr = dest->u.vnode_x86_64_pdpt.base;
+            break;
+        case ObjType_VNode_x86_64_pml4 :
+            dst_addr = dest->u.vnode_x86_64_pml4.base;
+            break;
+        default:
+            return SYSRET(SYS_ERR_CNODE_TYPE);
+            break;
+    }
+
+    uint64_t *dst_entry = ((uint64_t *)local_phys_to_mem(dst_addr)) + start;
+
+    for (uint64_t i = 0; i < num; ++i) {
+        dst_entry[i] = 0;
+    }
+
+    return SYSRET(SYS_ERR_OK);
+}
+
 
 /*
  *  MVAS Extension
@@ -310,6 +354,7 @@ static struct sysret handle_vroot_switch(struct capability *dest,
         default:
             return SYSRET(SYS_ERR_CNODE_TYPE);
     }
+
 
 /*
     MOV to CR3. The behavior of the instruction depends on the value of CR4.PCIDE:
@@ -332,6 +377,21 @@ static struct sysret handle_vroot_switch(struct capability *dest,
         }
     }
 
+/*
+    MOV to CR3. The behavior of the instruction depends on the value of CR4.PCIDE:
+    - If CR4.PCIDE = 0, the instruction invalidates all TLB entries associated with
+    PCID 000H except those for global pages. It also invalidates all entries in all
+    paging-structure caches associated with PCID 000H.
+    - If CR4.PCIDE = 1 and bit 63 of the instructions source operand is 0, the
+    instruction invalidates all TLB entries associated with the PCID specified in
+    bits 11:0 of the instruction's source operand except those for global pages. It
+    also invalidates all entries in all paging-structure caches associated with that
+    PCID. It is not required to invalidate entries in the TLBs and paging-structure
+    caches that are associated with other PCIDs.
+    - If CR4.PCIDE = 1 and bit 63 of the instruction's source operand is 1, the
+    instruction is not required to invalidate any TLB entries or entries in pagingstructure
+    caches.
+  */
     paging_context_switch(dcb_current->vspace);
 
     return SYSRET(SYS_ERR_OK);
@@ -1116,22 +1176,26 @@ static invocation_handler_t invocations[ObjType_Num][CAP_MAX_CMD] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
         [VNodeCmd_Inherit] = handle_inherit,
+        [VNodeCmd_Clear] = handle_clear,
         [VNodeCmd_Switch] = handle_vroot_switch,
     },
     [ObjType_VNode_x86_64_pdpt] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
         [VNodeCmd_Inherit] = handle_inherit,
+        [VNodeCmd_Clear] = handle_clear,
     },
     [ObjType_VNode_x86_64_pdir] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
         [VNodeCmd_Inherit] = handle_inherit,
+        [VNodeCmd_Clear] = handle_clear,
     },
     [ObjType_VNode_x86_64_ptable] = {
         [VNodeCmd_Map]   = handle_map,
         [VNodeCmd_Unmap] = handle_unmap,
         [VNodeCmd_Inherit] = handle_inherit,
+        [VNodeCmd_Clear] = handle_clear,
     },
     [ObjType_Kernel] = {
         [KernelCmd_Get_core_id]  = monitor_get_core_id,

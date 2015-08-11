@@ -167,6 +167,7 @@ enum vnode_cmd {
     VNodeCmd_Map,
     VNodeCmd_Unmap,
     VNodeCmd_Inherit,
+    VNodeCmd_Clear,
     VNodeCmd_Switch
 };
 

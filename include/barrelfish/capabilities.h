@@ -151,6 +151,11 @@ static inline errval_t vnode_inherit(struct capref dest, struct capref src,
     return invoke_vnode_inherit(dest, saddr, svbits, start, end);
 }
 
+static inline errval_t vnode_clear(struct capref dest, cslot_t start, cslot_t end)
+{
+
+    return invoke_vnode_clear(dest, start, end);
+}
 /*
  * MVAS extension
  */

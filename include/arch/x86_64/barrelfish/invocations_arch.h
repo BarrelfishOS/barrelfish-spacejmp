@@ -484,6 +484,12 @@ static inline errval_t invoke_vnode_inherit(struct capref dest, capaddr_t src, i
     return cap_invoke5(dest, VNodeCmd_Inherit, src, frombits, start, end).error;
 }
 
+static inline errval_t invoke_vnode_clear(struct capref dest,
+                                          cslot_t start, cslot_t end)
+{
+    return cap_invoke3(dest, VNodeCmd_Clear, start, end).error;
+}
+
 static inline errval_t invoke_vnode_vroot_switch(struct capref dest, uint16_t tag)
 {
     return cap_invoke2(dest, VNodeCmd_Switch, tag).error;
