@@ -479,6 +479,8 @@ static void vas_detach_call__rx(struct vas_binding *_binding, uint64_t id)
 
     txq_send(&mst->mst);
 #endif
+
+
 }
 
 static void vas_map_call__rx(struct vas_binding *_binding, uint64_t id,
@@ -813,6 +815,23 @@ static void vas_seg_lookup_call__rx(struct vas_binding *_binding, uint64_t name0
 
 }
 
+static struct seg_attached *att_cache = NULL;
+
+static inline struct seg_attached *seg_att_alloc(void)
+{
+    if (att_cache) {
+        struct seg_attached *ret = att_cache;
+        att_cache = att_cache->next;
+        return ret;
+    }
+    return calloc(1, sizeof(struct seg_attached ));
+}
+
+static inline void seg_att_free(struct seg_attached *att) {
+    att->next = att_cache;
+    att_cache = att;
+}
+
 static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
                                     uint64_t sid, uint32_t flags)
 {
@@ -838,7 +857,7 @@ static void vas_seg_attach_call__rx(struct vas_binding *_binding, uint64_t vid,
         goto err_out;
     }
 
-    struct seg_attached *att = calloc(1, sizeof(struct seg_attached));
+    struct seg_attached *att = seg_att_alloc();
     if (!att) {
         err = LIB_ERR_MALLOC_FAIL;
         goto err_out;
@@ -897,7 +916,7 @@ static void vas_seg_detach_call__rx(struct vas_binding *_binding, uint64_t vid,
     struct vas_info *vi;
     err = vas_verify_vas_id(vid, &vi);
     if (err_is_fail(err)) {
-        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, vas=0x%016lx, err='%s'\n",
+        VAS_SERVICE_DEBUG("[request] seg_detach: client=%p, vas=0x%016lx, err='%s'\n",
                                   _binding->st, vid, err_getstring(err));
         goto err_out;
     }
@@ -905,12 +924,46 @@ static void vas_seg_detach_call__rx(struct vas_binding *_binding, uint64_t vid,
     struct seg_info *si;
     err = vas_verify_seg_id(sid, &si);
     if (err_is_fail(err)) {
-        VAS_SERVICE_DEBUG("[request] seg_attach: client=%p, seg=0x%016lx, err='%s'\n",
+        VAS_SERVICE_DEBUG("[request] seg_detach: client=%p, seg=0x%016lx, err='%s'\n",
                                           _binding->st, sid, err_getstring(err));
         goto err_out;
     }
 
-    err = VAS_ERR_NOT_SUPPORTED;
+    /* find attached */
+    struct seg_attached *att = si->attached;
+    struct seg_attached *prev = NULL;
+    while(att) {
+        if (att->vreg.vspace == &vi->vspace) {
+            break;
+        }
+        prev = att;
+        att = att->next;
+    }
+
+    if (att == 0) {
+        err = VAS_ERR_NOT_FOUND;
+        goto err_out;
+    }
+
+    err = vas_vspace_detach_segment(&att->vreg);
+    if (err_is_fail(err)) {
+        err = err_push(err, LIB_ERR_VSPACE_ADD_REGION);
+        VAS_SERVICE_DEBUG("[request] seg_detach: vspace add client=%p, seg=0x%016lx, err='%s'\n",
+                          _binding->st, sid, err_getstring(err));
+        USER_PANIC_ERR(err, "detach segment failed");
+        goto err_out;
+    }
+
+
+    if (att == si->attached) {
+        assert(prev == NULL);
+        si->attached = att->next;
+    } else {
+        assert(prev);
+        prev->next = att->next;
+    }
+
+    seg_att_free(att);
 
     err_out:
     err = _binding->tx_vtbl.seg_attach_response(_binding, NOP_CONT, err);

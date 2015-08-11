@@ -303,10 +303,10 @@ static errval_t vas_vspace_add_segment(struct vas_vspace *vspace,
     return SYS_ERR_OK;
 }
 
-#if 0
-static errval_t vas_vspace_remove_segment(struct vas *vas, struct vas_vregion *seg)
+
+static errval_t vas_vspace_remove_segment(struct vas_vspace *vspace, struct vas_vregion *seg)
 {
-    struct vas_vregion *walk = vas->seg;
+    struct vas_vregion *walk = vspace->vregions;
     struct vas_vregion *prev = NULL;
 
     while (walk) {
@@ -315,8 +315,8 @@ static errval_t vas_vspace_remove_segment(struct vas *vas, struct vas_vregion *s
                 assert(prev->next == walk);
                 prev->next = walk->next;
             } else {
-                assert(walk == vspace->head);
-                vas->seg = walk->next;
+                assert(walk == vspace->vregions);
+                vspace->vregions = walk->next;
             }
             return SYS_ERR_OK;
         }
@@ -326,7 +326,7 @@ static errval_t vas_vspace_remove_segment(struct vas *vas, struct vas_vregion *s
 
     return LIB_ERR_VREGION_NOT_FOUND;
 }
-#endif
+
 
 
 struct vas_vnode *cached_pdir_vnodes;
@@ -585,6 +585,7 @@ errval_t vas_vspace_attach_segment(struct vas_vspace *vspace, struct vas_seg *se
     struct vas *vas = (struct vas *)vspace;
 
     vreg->seg = segment;
+    vreg->vspace = vspace;
 
     err = vas_vspace_add_segment(vspace, vreg);
     if (err_is_fail(err)) {
@@ -635,14 +636,66 @@ errval_t vas_vspace_attach_segment(struct vas_vspace *vspace, struct vas_seg *se
                      segment->slot_start, segment->slot_start + segment->slot_num,
                      dest.slot);
 
-    return vnode_inherit(dest, segment->root, segment->slot_start,
-                         segment->slot_start+segment->slot_num);
+    return vnode_inherit(dest, segment->root, segment->slot_start, segment->slot_num);
 
 }
 
-errval_t vas_vspace_detach_segment(struct vas_vspace *vspace, struct vas_seg *seg)
+errval_t vas_vspace_detach_segment(struct vas_vregion *vreg)
 {
-    return SYS_ERR_OK;
+    errval_t err;
+
+    struct vas_vspace *vspace = vreg->vspace;
+
+    err = vas_vspace_remove_segment(vspace, vreg);
+    if (err_is_fail(err)) {
+        return err_push(err, LIB_ERR_VSPACE_REMOVE_REGION);
+    }
+
+    struct capref dest;
+    struct vas_vnode *vnode;
+
+    switch (vreg->seg->roottype) {
+        case ObjType_VNode_x86_64_ptable :
+            err = vas_vspace_get_pt(vspace, vreg, &vnode);
+            if (err_is_fail(err)) {
+                return err;
+            }
+            dest = vnode->vnode;
+            VAS_DEBUG_VSPACE("%s, detaching at ptable %p\n", __FUNCTION__, vnode);
+            break;
+        case ObjType_VNode_x86_64_pdir :
+            /* may need to create pdir */
+            err = vas_vspace_get_pdir(vspace, vreg, &vnode);
+            if (err_is_fail(err)) {
+                return err;
+            }
+            dest = vnode->vnode;
+            VAS_DEBUG_VSPACE("%s, detaching at pdir %p\n", __FUNCTION__, vnode);
+            break;
+        case ObjType_VNode_x86_64_pdpt :
+            /* we already have a pdpt -> use this */
+            VAS_DEBUG_VSPACE("%s, detaching at pdpt\n", __FUNCTION__);
+            dest.cnode = vspace->pagecn;
+            dest.slot = X86_64_PML4_BASE(vreg->seg->seg.vaddr);
+            break;
+        case ObjType_VNode_x86_64_pml4 :
+            VAS_DEBUG_VSPACE("%s, detaching at pml4\n", __FUNCTION__);
+            dest = vspace->vas.vroot;
+            break;
+        default:
+            return SYS_ERR_VNODE_TYPE;
+            break;
+    }
+
+    if (err_is_fail(err)) {
+        return err;
+    }
+
+    VAS_DEBUG_VSPACE("%s, clearing subtree root slots [%u..%u] dest=%u\n", __FUNCTION__,
+                     vreg->seg->slot_start, vreg->seg->slot_start + vreg->seg->slot_num,
+                     dest.slot);
+
+    return vnode_clear(dest, vreg->seg->slot_start, vreg->seg->slot_num);
 }
 
 #endif

@@ -44,7 +44,7 @@ errval_t vas_vspace_create_vroot(struct capref vroot);
 
 errval_t vas_vspace_attach_segment(struct vas_vspace *vspace, struct vas_seg *segment,
                                    struct vas_vregion *vreg);
-errval_t vas_vspace_detach_segment(struct vas_vspace *vas, struct vas_seg *seg);
+errval_t vas_vspace_detach_segment(struct vas_vregion *vreg);
 
 
 errval_t vas_vspace_map_one_frame(struct vas *vas, void **retaddr,

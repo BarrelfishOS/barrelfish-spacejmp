@@ -351,8 +351,9 @@ errval_t vas_segment_create(struct vas_seg *segment)
 
     cslot_t num_leave_pt = 1 + ((seg->length / pagesize) / 512);
 
+    VAS_DEBUG_SEG("%s copying caps into slots [%" PRIuCSLOT "..%" PRIuCSLOT "]\n",
+                  __FUNCTION__, dest.slot, dest.slot+num_leave_pt);
     for (cslot_t i = 0; i < num_leave_pt; ++i) {
-        VAS_DEBUG_SEG("%s copying caps into slot %u\n", __FUNCTION__, dest.slot);
         err = cap_copy(dest, seg->frame);
         if (err_is_fail(err)) {
             return err_push(err, LIB_ERR_CAP_COPY_FAIL);
@@ -401,6 +402,20 @@ errval_t vas_segment_create(struct vas_seg *segment)
                 src.slot += num_slots;
                 dest.slot++;
             }
+            if (pagesize < LARGE_PAGE_SIZE) {
+                //     num_slots = (seg->length / (LARGE_PAGE_SIZE));
+                VAS_DEBUG_SEG("%s mapping pdir[%lu..%lu] -> pt dst=%u, src=%u\n", __FUNCTION__,
+                              X86_64_PDPT_BASE(seg->vaddr), X86_64_PDPT_BASE(seg->vaddr)+ num_slots, dest.slot, src.slot);
+
+                for (cslot_t slot = 0; slot < num_slots; ++slot) {
+                    err = vas_segment_map_page_table(dest, src, 0, 512);
+                    if (err_is_fail(err)) {
+                        return err_push(err, LIB_ERR_VNODE_MAP);
+                    }
+                    src.slot += 512;
+                    dest.slot++;
+                }
+            }
             break;
         case ObjType_VNode_x86_64_pdir:
             num_slots = (seg->length / (LARGE_PAGE_SIZE));
@@ -446,7 +461,7 @@ errval_t vas_segment_create(struct vas_seg *segment)
             break;
         case ObjType_VNode_x86_64_pdpt:
             if (pagesize == HUGE_PAGE_SIZE) {
-                /* need further mappings */
+                /* install frames */
                 VAS_DEBUG_SEG("%s mapping large frames in pdir[%lu..%u] \n",
                               __FUNCTION__, X86_64_PDIR_BASE(seg->vaddr),
                               num_slots);
@@ -457,10 +472,22 @@ errval_t vas_segment_create(struct vas_seg *segment)
                     return err;
                 }
             } else if (pagesize == LARGE_PAGE_SIZE) {
-                /* install frames */
+
+                /* need further mappings */
                 USER_PANIC("NOT YET IMPLEMENTED");
             } else {
-                USER_PANIC("NOT YET IMPLEMENTED");
+                num_slots = seg->length / LARGE_PAGE_SIZE;
+                size_t offset = 0;
+
+                VAS_DEBUG_SEG("%s mapping base frames in pts[%u..%lu] \n",
+                                              __FUNCTION__, 0, (uint64_t)num_slots);
+                for (cslot_t slot = 0; slot < num_slots; slot++) {
+                    err = vas_segment_map_frames(dest, src,
+                                                 0, 512, offset, seg->flags);
+                    dest.slot++;
+                    src.slot++;
+                    offset += LARGE_PAGE_SIZE;
+                }
             }
             break;
         case ObjType_VNode_x86_64_pdir:
