@@ -1,14 +1,31 @@
 ##########################################################################
-Copyright (c) 2009-2013, ETH Zurich.
+Copyright (c) 2009-2022, ETH Zurich.
 All rights reserved.
 
 This file is distributed under the terms in the attached LICENSE file.
 If you do not find this file, copies can be found by writing to:
-ETH Zurich D-INFK, Haldeneggsteig 4, CH-8092 Zurich. Attn: Systems Group.
+ETH Zurich D-INFK, Universitaetsstrasse 6, CH-8092 Zurich. Attn: Systems Group.
 ##########################################################################
 
+
+Barrelfish/SpaceJMP
+===================
+
+This repository contains the implementation of the SpaceJMP extension in 
+Barrelfish. See `lib/vas` for the library implementation.
+
+
+**Related ASPLOS'16 Publication:**
+*SpaceJMP: Programming with Multiple Virtual Address Spaces.* 
+Izzat El Hajj, Alexander Merritt, Gerd Zellweger, Dejan Milojicic, Reto Achermann, 
+Paolo Faraboschi, Wen-mei Hwu, Timothy Roscoe and Karsten Schwan. ASPLOS '16.
+
+**Note:** 
+The code base of upstream Barrelfish has diverged. 
+
+
 Barrelfish Overview
---------------------------------
+-------------------
 
 Barrelfish currently runs on:
 
